@@ -128,7 +128,7 @@ The functions available are:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, FINAL DATE GOES HERE
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"

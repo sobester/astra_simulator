@@ -8,7 +8,7 @@ DESCRIPTION
 Example: Forecast based Simulation
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, FINAL DATE GOES HERE
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -18,8 +18,8 @@ from datetime import datetime, timedelta
 from simulator import *
 
 
-simEnvironment = forecastEnvironment(debugging=False,log_to_file=False)
-simFlight = flight(debugging=False,log_to_file=False)
+simEnvironment = forecastEnvironment(debugging=False, log_to_file=False)
+simFlight = flight(debugging=False, log_to_file=False)
 
 # Environment parameters
 # Launch site: Daytona Beach, FL
@@ -49,7 +49,7 @@ simFlight.floatingFlight = False
 simFlight.floatingAltitude = 30000                      # m
 simFlight.excessPressureCoeff = 1
 #simFlight.maxFlightTime = 5*60*60
-simFlight.outputFile = '/Users/nick/Desktop/Simulation_Results'
+simFlight.outputFile = '/path/to/Simulation_Results'
 
 
 # Run the simulation

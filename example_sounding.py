@@ -8,7 +8,7 @@ DESCRIPTION
 Example: Sounding based Simulation
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, FINAL DATE GOES HERE
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -18,8 +18,8 @@ from datetime import datetime
 from simulator import *
 
 
-simEnvironment = soundingEnvironment(debugging=False,log_to_file=False)
-simFlight = flight(debugging=False,log_to_file=False)
+simEnvironment = soundingEnvironment(debugging=False, log_to_file=False)
+simFlight = flight(debugging=False, log_to_file=False)
 
 # Environment parameters
 # Launch site: University of Southampton

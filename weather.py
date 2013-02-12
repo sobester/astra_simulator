@@ -54,7 +54,7 @@ Refer to the individual classes and subclasses for details on how to use them.
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, FINAL DATE GOES HERE
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -742,6 +742,7 @@ class forecastEnvironment(environment):
     my_forecast_atmosphere.loadForecast()
 
     """
+
     def __init__(self, debugging=False, log_to_file=False):
         """
         Initialize the forecastEnvironment object

@@ -86,13 +86,13 @@ Typical usage of the GFS module:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, FINAL DATE GOES HERE
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
 
 from datetime import datetime, timedelta
-from math import floor, ceil, isnan
+from math import floor, ceil
 import urllib2
 import logging
 
@@ -170,7 +170,8 @@ class GFS_Handler:
             self.latStep = 1.0
             self.lonStep = 1.0
             # Prepare download of high altitude HD data
-            self._highAltitudeGFS = GFS_High_Altitude_Handler(lat,lon,date_time,forecast_duration,debugging,log_to_file)
+            self._highAltitudeGFS = GFS_High_Altitude_Handler(lat, lon, date_time, forecast_duration, debugging,
+                                                              log_to_file)
             self._highAltitudePressure = None
 
         # SETUP ERROR LOGGING AND DEBUGGING
@@ -240,7 +241,7 @@ class GFS_Handler:
         # These are the hours at which new forecast cycles are issued
         dailyCycles = [0, 6, 12, 18]
         # Determine which cycle issuing hour is the closest to the current one
-        cycleTime = dailyCycles[numpy.digitize([currentDateTime.hour],dailyCycles)[0]-1]
+        cycleTime = dailyCycles[numpy.digitize([currentDateTime.hour], dailyCycles)[0] - 1]
         latestCycleDateTime = datetime(currentDateTime.year, currentDateTime.month, currentDateTime.day, cycleTime)
 
 
@@ -384,11 +385,11 @@ class GFS_Handler:
 
                     requestURL = '%sgfs%s%d%02d%02d/gfs%s_%02dz.ascii?%s[%d:%d][%d:%d][%d:%d][%d:%d]' % (
                         baseURL,
-                        { True: '_hd', False: '' }[self.HD],
+                        {True: '_hd', False: ''}[self.HD],
                         thisCycle.year,
                         thisCycle.month,
                         thisCycle.day,
-                        { True: '_hd', False: '' }[self.HD],
+                        {True: '_hd', False: ''}[self.HD],
                         thisCycle.hour,
                         requestVariable,
                         requestTime[0], requestTime[1],
@@ -524,7 +525,8 @@ class GFS_Handler:
                         GFS_data_interpolator(self, self.temperatureData, self.temperatureMap.mappingCoordinates))
                 else:
                     results.append(
-                        GFS_data_interpolator(self, self.temperatureData, self.temperatureMap.mappingCoordinates,self._highAltitudeGFS.interpolateData('t')))
+                        GFS_data_interpolator(self, self.temperatureData, self.temperatureMap.mappingCoordinates,
+                                              self._highAltitudeGFS.interpolateData('t')))
 
             elif variable in ('press', 'p', 'pressure'):
                 # Interpolate pressure
@@ -535,14 +537,16 @@ class GFS_Handler:
                 if self.HD:
                     results.append(GFS_data_interpolator(self, self.windDirData, self.windsMap.mappingCoordinates))
                 else:
-                    results.append(GFS_data_interpolator(self, self.windDirData, self.windsMap.mappingCoordinates, self._highAltitudeGFS.interpolateData('d')))
+                    results.append(GFS_data_interpolator(self, self.windDirData, self.windsMap.mappingCoordinates,
+                                                         self._highAltitudeGFS.interpolateData('d')))
 
             elif variable in ('windspd', 's', 'wind_speed'):
                 # Interpolate wind speed
                 if self.HD:
                     results.append(GFS_data_interpolator(self, self.windSpeedData, self.windsMap.mappingCoordinates))
                 else:
-                    results.append(GFS_data_interpolator(self, self.windSpeedData, self.windsMap.mappingCoordinates, self._highAltitudeGFS.interpolateData('s')))
+                    results.append(GFS_data_interpolator(self, self.windSpeedData, self.windsMap.mappingCoordinates,
+                                                         self._highAltitudeGFS.interpolateData('s')))
 
             else:
                 logger.error('A wrong interpolation parameter (%s) was passed to the interpolator.' % variable)
@@ -690,9 +694,9 @@ class GFS_Handler:
         """
 
         # Clip out-of-bounds coordinates and limit them
-        lat = numpy.clip(lat,self.altitudeMap.fwdLatitude[0],self.altitudeMap.fwdLatitude[-1])
-        lon = numpy.clip(lon,self.altitudeMap.fwdLongitude[0],self.altitudeMap.fwdLongitude[-1])
-        time = numpy.clip(time,self.altitudeMap.fwdTime[0],self.altitudeMap.fwdTime[-1])
+        lat = numpy.clip(lat, self.altitudeMap.fwdLatitude[0], self.altitudeMap.fwdLatitude[-1])
+        lon = numpy.clip(lon, self.altitudeMap.fwdLongitude[0], self.altitudeMap.fwdLongitude[-1])
+        time = numpy.clip(time, self.altitudeMap.fwdTime[0], self.altitudeMap.fwdTime[-1])
 
         # Find closest indices and subtract 1 if the upper limit is being reached, to avoid a KeyError
         i = numpy.digitize([lat], self.altitudeMap.fwdLatitude)[0]
@@ -714,9 +718,11 @@ class GFS_Handler:
 
         if lonGrid[0] == lonGrid[1]:
             try:
-                idxLon = [self.altitudeMap.revLongitude[lonGrid[0]], self.altitudeMap.revLongitude[lonGrid[1] + self.lonStep]]
+                idxLon = [self.altitudeMap.revLongitude[lonGrid[0]],
+                          self.altitudeMap.revLongitude[lonGrid[1] + self.lonStep]]
             except KeyError:
-                idxLon = [self.altitudeMap.revLongitude[lonGrid[0] - self.lonStep], self.altitudeMap.revLongitude[lonGrid[1]]]
+                idxLon = [self.altitudeMap.revLongitude[lonGrid[0] - self.lonStep],
+                          self.altitudeMap.revLongitude[lonGrid[1]]]
         else:
             idxLon = [self.altitudeMap.revLongitude[lonGrid[0]], self.altitudeMap.revLongitude[lonGrid[1]]]
 
@@ -732,7 +738,6 @@ class GFS_Handler:
 
             logger.error('An error occurred while clipping coordinate points.')
             raise
-
 
         alt00 = fracLat * self.altitudeData[idxLat[0], idxLon[0], :, idxTime[0]] + (1 - fracLat) * self.altitudeData[
                                                                                                    idxLat[1], idxLon[0],
@@ -758,7 +763,7 @@ class GFS_Handler:
             if self.HD:
                 return self.altitudeMap.fwdPressure[-1]
             else:
-                return self._highAltitudePressure(lat,lon,alt,time)
+                return self._highAltitudePressure(lat, lon, alt, time)
         else:
             # LINEAR INTERPOLATION
             # (see method documentation for details)
@@ -767,8 +772,6 @@ class GFS_Handler:
 
 
 class GFS_High_Altitude_Handler(GFS_Handler):
-
-
     def __init__(self, lat, lon, date_time, forecast_duration=4, debugging=False, log_to_file=False):
         global logger
 
@@ -835,7 +838,7 @@ class GFS_High_Altitude_Handler(GFS_Handler):
         logger.addHandler(log_handler)
 
 
-    def downloadForecast(self,progressHandler=None):
+    def downloadForecast(self, progressHandler=None):
         """
         Connect to the Global Forecast System and download the closest cycle available to the date_time
         required. The cycle date and time is stored in the object's cycleDateTime variable.
@@ -874,7 +877,7 @@ class GFS_High_Altitude_Handler(GFS_Handler):
         # These are the hours at which new forecast cycles are issued
         dailyCycles = [0, 6, 12, 18]
         # Determine which cycle issuing hour is the closest to the current one
-        cycleTime = dailyCycles[numpy.digitize([currentDateTime.hour],dailyCycles)[0]-1]
+        cycleTime = dailyCycles[numpy.digitize([currentDateTime.hour], dailyCycles)[0] - 1]
         latestCycleDateTime = datetime(currentDateTime.year, currentDateTime.month, currentDateTime.day, cycleTime)
 
 
@@ -1087,7 +1090,6 @@ class GFS_High_Altitude_Handler(GFS_Handler):
         logger.debug('High altitude HD forecast successfully downloaded!')
 
         return True
-
 
 
 class GFS_Map:

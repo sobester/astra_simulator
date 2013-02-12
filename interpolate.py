@@ -59,7 +59,7 @@ The standard syntax to request data is as follows:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, FINAL DATE GOES HERE
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -116,10 +116,10 @@ class Linear4DInterpolator:
         time = coordinates[3]
 
         # Check if within bounds and switch to nearest neighbour if not
-        lat = numpy.clip(lat,self.min[0],self.max[0])
-        lon = numpy.clip(lon,self.min[1],self.max[1])
-        press = numpy.clip(press,self.min[2],self.max[2])
-        time = numpy.clip(time,self.min[3],self.max[3])
+        lat = numpy.clip(lat, self.min[0], self.max[0])
+        lon = numpy.clip(lon, self.min[1], self.max[1])
+        press = numpy.clip(press, self.min[2], self.max[2])
+        time = numpy.clip(time, self.min[3], self.max[3])
 
         # Find closest indices and subtract 1 if the upper limit is being reached, to avoid a KeyError
         i = numpy.digitize([lat], self.dmap[0])[0]

@@ -193,7 +193,7 @@ An advanced usage of the Simulator could be as follows:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, FINAL DATE GOES HERE
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -332,7 +332,7 @@ class flight:
         # ________________________________________________________________________________________ #
         # RUN THE FLIGHT SIMULATION
         for flightNumber in xrange(self.numberOfSimRuns):
-            logger.debug('SIMULATING FLIGHT %d' % (flightNumber+1))
+            logger.debug('SIMULATING FLIGHT %d' % (flightNumber + 1))
             self.fly(flightNumber)
             self.updateProgress(float(flightNumber + 1) / self._totalStepsForProgress, 0)
 
@@ -447,7 +447,7 @@ class flight:
                                2: 0.11 * 11}[self.balloonWeight]
 
         logger.debug('Balloon performance: Mean burst diameter: %.4f, Stdev burst diameter: %.4f' % (
-        self._meanBurstDia, self._stdevBurstDia))
+            self._meanBurstDia, self._stdevBurstDia))
 
         # ________________________________________________________________________________________ #
         # Variable initialization
@@ -769,7 +769,7 @@ class flight:
             solution = odeint(ode, initialConditions, timeVector, rtol=1e-3, atol=1e-3)
         else:
             solution = odeint(ode, initialConditions, timeVector)
-        ###################
+            ###################
 
         logger.debug('Integration completed. Post-processing...')
 
@@ -901,7 +901,7 @@ class flight:
                     for eachPoint in numpy.transpose(flightResult[2:5]):
                         if pointNumber % shrinkFactor == 0:
                             jsonPoints.append('{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f }\n' % (
-                                numpy.clip(eachPoint[0],-85.0511,85.0511), eachPoint[1], eachPoint[2]))
+                                numpy.clip(eachPoint[0], -85.0511, 85.0511), eachPoint[1], eachPoint[2]))
                         pointNumber += 1
 
                     jsonPath.append(','.join(jsonPoints))
