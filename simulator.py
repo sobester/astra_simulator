@@ -397,9 +397,9 @@ class flight:
             toBreak = True
         if self.launchSiteLat == 0.0 or self.launchSiteLon == 0.0:
             logger.warning('Warning: Are you sure you set the launch site location correctly?')
-        if self.trainEquivSphereDiam == 0.0:
-            logger.error('The train equivalent sphere diameter cannot be zero!')
-            toBreak = True
+        # if self.trainEquivSphereDiam == 0.0:
+        #     logger.error('The train equivalent sphere diameter cannot be zero!')
+        #     toBreak = True
         if self.nozzleLift <= self.payloadTrainWeight:
             logger.error(
                 'The nozzle lift is too low for the balloon to climb! Adjust the nozzle lift before continuing')
