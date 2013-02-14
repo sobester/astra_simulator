@@ -753,7 +753,7 @@ class forecastEnvironment(environment):
 
         # Initialize extra forecast-specific variables
         self.forceNonHD = False
-        self.maxFlightTime = 14400
+        self.maxFlightTime = 18000
         self._GFSmodule = None
 
     def loadForecast(self, progressHandler=None):

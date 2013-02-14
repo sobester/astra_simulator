@@ -145,7 +145,7 @@ class GFS_Handler:
         # Grid size setup
         # NOTE: Grid sizes are defined as the difference between the highest and the lowest lat/lon requested, NOT the
         # difference between the highest and the requested point or the lowest and the requested point!
-        if forecast_duration == 4:
+        if forecast_duration == 5:
             # Standard flight
             self.latGridSize = 6
             self.lonGridSize = 12

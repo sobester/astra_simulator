@@ -234,7 +234,7 @@ class flight:
         self.floatingFlight = False
         self.floatingAltitude = 0.0         # m
         self.ventingStart = 1000            # meters below the target altitude
-        self.maxFlightTime = 14400
+        self.maxFlightTime = 18000
         self.excessPressureCoeff = 1
         self.outputFile = ''
         # self.launchSiteLat = 0.0   --- These will be automatically fetched
@@ -390,8 +390,8 @@ class flight:
         if self.payloadTrainWeight == 0.0:
             logger.error('Payload train weight cannot be zero!')
             toBreak = True
-        if self.parachuteType == 0:
-            logger.warning('Warning: Are you sure there is no parachute?')
+        # if self.parachuteType == 0:
+        #     logger.warning('Warning: Are you sure there is no parachute?')
         if self.numberOfSimRuns == 0:
             logger.error('The number of sim runs cannot be zero!')
             toBreak = True
