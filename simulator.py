@@ -277,6 +277,30 @@ class flight:
 
         self._totalStepsForProgress = 0
 
+        # Which balloon weights are supported
+        self.availableBurstDiameters = {
+            0.1: 1.96,
+            0.35: 1.0813 * 4.12,
+            0.8: 7,
+            0.95: 7.2,
+            1.0: 7.5,
+            1.2: 8.5,
+            1.5: 9.44,
+            1.6: 10.5,
+            2: 1.0813 * 11
+        }
+        self.availableBurstStdev = {
+            0.1: 0.11 * 1.96,
+            0.35: 0.11 * 4.12,
+            0.8: 0.11 * 7,
+            0.95: 0.11 * 7.2,
+            1.0: 0.11 * 7.5,
+            1.2: 0.11 * 8.5,
+            1.5: 0.11 * 9.44,
+            1.6: 0.11 * 10.5,
+            2: 0.11 * 11
+        }
+
         # SETUP ERROR LOGGING AND DEBUGGING
 
         logger = logging.getLogger('Simulator')
@@ -379,10 +403,9 @@ class flight:
             logger.warning(
                 'Warning: An invalid gas type for this flight was found. The calculation will carry on with Helium.')
             self.balloonGasType = 'Helium'
-        if (self.balloonWeight != 0.1 and self.balloonWeight != 0.35 and self.balloonWeight != 0.8 and
-                    self.balloonWeight != 1.5 and self.balloonWeight != 1.6 and self.balloonWeight != 2.0):
+        if not self.balloonWeight in self.availableBurstDiameters.keys():
             logger.error(
-                'An invalid balloon weight was found. Accepted values are 0.1, 0.35, 0.8, 1.5, 1.6 and 2.0 kg. Please correct it.')
+                'An invalid balloon weight was found. Accepted values are %s kg. Please correct it.', self.availableBurstDiameters.keys())
             toBreak = True
         if self.nozzleLift == 0.0:
             logger.error('Nozzle lift cannot be zero!')
@@ -433,18 +456,8 @@ class flight:
 
         # Balloon performance estimation
         # According to the balloon weight entered, select the related mean burst diameter and its standard deviation.
-        self._meanBurstDia = {0.1: 1.96,
-                              0.35: 1.0813 * 4.12,
-                              0.8: 7,
-                              1.5: 9.44,
-                              1.6: 10.5,
-                              2: 1.0813 * 11}[self.balloonWeight]
-        self._stdevBurstDia = {0.1: 0.11 * 1.96,
-                               0.35: 0.11 * 4.12,
-                               0.8: 0.11 * 7,
-                               1.5: 0.11 * 9.44,
-                               1.6: 0.11 * 10.5,
-                               2: 0.11 * 11}[self.balloonWeight]
+        self._meanBurstDia = self.availableBurstDiameters[self.balloonWeight]
+        self._stdevBurstDia = self.availableBurstStdev[self.balloonWeight]
 
         logger.debug('Balloon performance: Mean burst diameter: %.4f, Stdev burst diameter: %.4f' % (
             self._meanBurstDia, self._stdevBurstDia))
