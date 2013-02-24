@@ -97,7 +97,7 @@ def main(argv):
             forecastWxr.dateAndTime = datetime.strptime(arg[:-6], '%d/%m/%Y %H:%M')
             soundingWxr.dateAndTime = datetime.strptime(arg[:-6], '%d/%m/%Y %H:%M')
         elif opt in '-b':
-            simFlight.balloonWeight = float(arg)
+            simFlight.balloonModel = arg
         elif opt in '-g':
             simFlight.balloonGasType = arg
         elif opt in '-n':

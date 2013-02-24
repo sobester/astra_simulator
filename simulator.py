@@ -193,9 +193,9 @@ An advanced usage of the Simulator could be as follows:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 23/02/2013
 """
-
+# TODO: Update documentation for balloonModel
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
 
 from math import pi
@@ -210,6 +210,7 @@ from scipy.integrate import odeint
 from flight_tools import flight_tools
 from weather import *
 import drag_helium
+import available_balloons
 
 # Error and warning logger
 logger = None
@@ -225,7 +226,7 @@ class flight:
         # User defined variables
         self.environment = None             # weather object
         self.balloonGasType = ''
-        self.balloonWeight = 0.0            # kg
+        self.balloonModel = None            # See available_balloons
         self.nozzleLift = 0.0               # kg
         self.payloadTrainWeight = 0.0       # kg
         self.parachuteType = 0
@@ -254,8 +255,8 @@ class flight:
         self._debugging = debugging
         self._progressToFile = progress_to_file
         self._progressFile = ''
+        self._balloonWeight = 0.0
         self._meanBurstDia = 0.0
-        self._stdevBurstDia = 0.0
         self._lowCD = []
         self._highCD = []
         self._transition = []
@@ -277,29 +278,6 @@ class flight:
 
         self._totalStepsForProgress = 0
 
-        # Which balloon weights are supported
-        self.availableBurstDiameters = {
-            0.1: 1.96,
-            0.35: 1.0813 * 4.12,
-            0.8: 7,
-            0.95: 7.2,
-            1.0: 7.5,
-            1.2: 8.5,
-            1.5: 9.44,
-            1.6: 10.5,
-            2: 1.0813 * 11
-        }
-        self.availableBurstStdev = {
-            0.1: 0.11 * 1.96,
-            0.35: 0.11 * 4.12,
-            0.8: 0.11 * 7,
-            0.95: 0.11 * 7.2,
-            1.0: 0.11 * 7.5,
-            1.2: 0.11 * 8.5,
-            1.5: 0.11 * 9.44,
-            1.6: 0.11 * 10.5,
-            2: 0.11 * 11
-        }
 
         # SETUP ERROR LOGGING AND DEBUGGING
 
@@ -403,9 +381,9 @@ class flight:
             logger.warning(
                 'Warning: An invalid gas type for this flight was found. The calculation will carry on with Helium.')
             self.balloonGasType = 'Helium'
-        if not self.balloonWeight in self.availableBurstDiameters.keys():
+        if not self.balloonModel in available_balloons.balloons.keys():
             logger.error(
-                'An invalid balloon weight was found. Accepted values are %s kg. Please correct it.', self.availableBurstDiameters.keys())
+                'An invalid balloon model was found. Supported models are %s. Please correct it.', available_balloons.balloons.keys())
             toBreak = True
         if self.nozzleLift == 0.0:
             logger.error('Nozzle lift cannot be zero!')
@@ -455,12 +433,14 @@ class flight:
         ## Preflight calculations
 
         # Balloon performance estimation
-        # According to the balloon weight entered, select the related mean burst diameter and its standard deviation.
-        self._meanBurstDia = self.availableBurstDiameters[self.balloonWeight]
-        self._stdevBurstDia = self.availableBurstStdev[self.balloonWeight]
+        # According to the balloon weight entered, select the related mean burst diameter and its Weibull coefficients.
+        self._balloonWeight = available_balloons.balloons[self.balloonModel][0]
+        self._meanBurstDia = available_balloons.meanToNominalBurstRatio * available_balloons.balloons[self.balloonModel][1]
+        self._weibull_lambda = available_balloons.balloons[self.balloonModel][2]
+        self._weibull_k = available_balloons.balloons[self.balloonModel][3]
 
-        logger.debug('Balloon performance: Mean burst diameter: %.4f, Stdev burst diameter: %.4f' % (
-            self._meanBurstDia, self._stdevBurstDia))
+        logger.debug('Balloon performance: Mean burst diameter: %.4f, Lambda: %.4f, k: %4f' % (
+            self._meanBurstDia, self._weibull_lambda, self._weibull_k))
 
         # ________________________________________________________________________________________ #
         # Variable initialization
@@ -502,7 +482,7 @@ class flight:
                 self._ReBand.append(drag_helium.transitions[mcIndex, 3])
                 self._balloonReturnFraction.append(0.03 + numpy.random.random() * (1 - 0.03))
                 self._parachuteCD.append(0.6 + 0.2 * numpy.random.random())
-                self._burstDiameter.append(self._meanBurstDia + numpy.random.normal() * self._stdevBurstDia)
+                self._burstDiameter.append(self._weibull_lambda * numpy.random.weibull(self._weibull_k))
                 # Perturb the wind for Monte Carlo.
             self.environment.perturbWind(self.numberOfSimRuns)
 
@@ -518,7 +498,7 @@ class flight:
         # inflation)
         self._gasMassAtInflation, self._balloonVolumeAtInflation, self._balloonDiaAtInflation = self.flightTools.liftingGasMass(
             self.nozzleLift,
-            self.balloonWeight,
+            self._balloonWeight,
             self.environment.inflationTemperature,
             self.environment.getPressure(self.launchSiteLat, self.launchSiteLon, self.launchSiteElev,
                                          self.environment.dateAndTime),
@@ -546,7 +526,7 @@ class flight:
             self._gasMassAtFloat, self._balloonVolumeAtFloat, self._balloonDiaAtFloat = self.flightTools.liftingGasMass(
                 self.payloadTrainWeight, # This is the Nozzle Lift, which has to be equal to the payload train weight
                 # for the balloon to float. If they are, the sum of the (vertical) forces is 0.
-                self.balloonWeight,
+                self._balloonWeight,
                 self.environment.getTemperature(self.launchSiteLat, self.launchSiteLon, self.floatingAltitude,
                                                 self.environment.dateAndTime),
                 self.environment.getPressure(self.launchSiteLat, self.launchSiteLon, self.floatingAltitude,
@@ -592,8 +572,8 @@ class flight:
         self.flightTools.ReBand = self._ReBand[flightNumber]
         self.flightTools.transition = self._transition[flightNumber]
         self.flightTools.parachuteCD = self._parachuteCD[flightNumber]
-        self._totalAscendingMass = self.payloadTrainWeight + self._gasMassAtInflation + self.balloonWeight
-        self._totalDescendingMass = self.payloadTrainWeight + self.balloonWeight * self._balloonReturnFraction[
+        self._totalAscendingMass = self.payloadTrainWeight + self._gasMassAtInflation + self._balloonWeight
+        self._totalDescendingMass = self.payloadTrainWeight + self._balloonWeight * self._balloonReturnFraction[
             flightNumber]
         # Use the correct wind profile according to the simulation type: a standard one for deterministic simulations
         # or a perturbed one for Monte Carlo simulations.
@@ -702,7 +682,7 @@ class flight:
                                                     currentTime),
                         gasDensity,
                         balloonVolume,
-                        self.balloonWeight,
+                        self._balloonWeight,
                         altitude,
                         self.floatingAltitude,
                         ventStart=self.ventingStart

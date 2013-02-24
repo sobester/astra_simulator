@@ -37,7 +37,7 @@ simEnvironment.loadSounding('/path/to/myFile.sounding')
 # Launch parameters
 simFlight.environment = simEnvironment
 simFlight.balloonGasType = 'Helium'
-simFlight.balloonWeight = 0.8                           # kg
+simFlight.balloonModel = "TA800"
 simFlight.nozzleLift = 1                                # kg
 simFlight.payloadTrainWeight = 0.433                    # kg
 simFlight.parachuteType = 3
