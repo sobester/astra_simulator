@@ -126,7 +126,6 @@ def main(argv):
             simFlight.outputFile = arg
         elif opt in '-l':
             simFlight.maxFlightTime = int(arg) * 3600.
-            forecastWxr.maxFlightTime = simFlight.maxFlightTime
         elif opt in '--noHD':
             forecastWxr.forceNonHD = True
         elif opt in '--help':

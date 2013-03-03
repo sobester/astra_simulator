@@ -408,6 +408,7 @@ class flight:
 
         # If the forecast hasn't been downloaded yet, do it now.
         if not self.environment._weatherLoaded and isinstance(self.environment, forecastEnvironment):
+            self.environment.maxFlightTime = self.maxFlightTime
             self.environment.loadForecast(self.updateProgress)
             if not self.environment._weatherLoaded:
                 logger.error('Cannot load forecast!')

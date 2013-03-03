@@ -29,7 +29,7 @@ simEnvironment.launchSiteLon = -81.0228                 # deg
 simEnvironment.launchSiteElev = 4                       # m
 simEnvironment.dateAndTime = datetime.now() + timedelta(days=1)
 simEnvironment.UTC_offset = 0
-# simEnvironment.forceNonHD = True
+simEnvironment.forceNonHD = True
 
 # The forecast download is automatically called by the flight object below.
 # However, if you'd like to download it in advance, uncomment the following line.
@@ -39,17 +39,17 @@ simEnvironment.UTC_offset = 0
 # Launch parameters
 simFlight.environment = simEnvironment
 simFlight.balloonGasType = 'Helium'
-simFlight.balloonModel = "TA800"
+simFlight.balloonModel = 'TA800'
 simFlight.nozzleLift = 1                                # kg
 simFlight.payloadTrainWeight = 0.433                    # kg
 simFlight.parachuteType = 3
-simFlight.numberOfSimRuns = 10
+simFlight.numberOfSimRuns = 25
 simFlight.trainEquivSphereDiam = 0.1                    # m
 simFlight.floatingFlight = False
 simFlight.floatingAltitude = 30000                      # m
 simFlight.excessPressureCoeff = 1
 #simFlight.maxFlightTime = 5*60*60
-simFlight.outputFile = '/path/to/Simulation_Results'
+simFlight.outputFile = '/Users/nick/Desktop/Simulation_Results'
 
 
 # Run the simulation
