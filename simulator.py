@@ -42,7 +42,7 @@ The following parameters of the flight object need to be defined (parameters in 
     environment         an environment object (either soundingEnvironment or forecastEnvironment) already configured
         with the environmental model. See the Weather Module for more information.
     balloonGasType      'Helium'|'Hydrogen' (type: string)
-    balloonWeight       weight of the balloon in kg. Accepted values are 0.1, 0.35, 0.8, 1.5, 1.6 and 2.0 kg. (type: float)
+    balloonModel        model of the balloon. Accepted values can be found in available_balloons.py. (type: string)
     nozzleLift          nozzle lift in kg (type: float)
     payloadTrainWeight  weight of the payload train in kg (type: float)
     parachuteType       0 for no parachute
@@ -195,7 +195,6 @@ An advanced usage of the Simulator could be as follows:
 University of Southampton
 Niccolo' Zapponi, nz1g10@soton.ac.uk, 23/02/2013
 """
-# TODO: Update documentation for balloonModel
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
 
 from math import pi
