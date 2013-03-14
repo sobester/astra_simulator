@@ -152,7 +152,7 @@ class GFS_Handler:
         else:
             # Non-standard flight (either floating or customized from command line)
             self.latGridSize = 2 * ceil(0.1 * self.maxFlightTime + 0.6) + 3
-            self.lonGridSize = 2 * ceil(1.1 * self.maxFlightTime) + 3
+            self.lonGridSize = 2 * ceil(0.9 * self.maxFlightTime) + 3
 
         # Automatically switch to non HD if close to the poles, as all the longitudes will be downloaded
         if lat < -80 or lat > 80:
@@ -283,8 +283,8 @@ class GFS_Handler:
             if requestLatitude[1] > 180:
                 requestLatitude[1] = 180
 
-            # Request all longitudes if close to the poles
-            if requestLatitude[0] < 10 or requestLatitude[1] > 170:
+            # Request all longitudes if close to the poles or if simulation is beyond 2 days
+            if requestLatitude[0] < 10 or requestLatitude[1] > 170 or self.maxFlightTime > 48:
                 requestAllLongitudes = True
 
         # LONGITUDE
