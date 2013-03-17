@@ -719,7 +719,7 @@ class forecastEnvironment(environment):
     --------------
     forceNonHD limits the forecast download to non-HD only.
     This is NOT recommended, since the definition of the weather forecast is much better in HD.
-    It's important to note that he simulator automatically switches to non-HD forecast if the amount of data requested
+    It's important to note that the simulator automatically switches to non-HD forecast if the amount of data requested
     is too high.
 
 

@@ -813,9 +813,11 @@ class flight:
                 longitudeProfile[i] += 180
 
             if longitudeProfile[i] > 180:
-                longitudeProfile[i] -= 360
+                n = (round(latitudeProfile[i])-180)/360 + 1
+                longitudeProfile[i] -= n * 360
             elif longitudeProfile[i] <= -180:
-                longitudeProfile[i] += 360
+                n = (round(latitudeProfile[i])-180)/360 + 1
+                longitudeProfile[i] += n * 360
 
 
         # Find burst point index or "target altitude reached" index
