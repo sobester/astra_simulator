@@ -107,13 +107,14 @@ NOTE: AVAILABLE OUTPUT FORMATS
 
 The format of the file to be generated depends on the extension of the file passed in the outputFile.
 Accepted extensions are:
-    'json'  JavaScript data structure, used to provide data to the web interface;
-    'kml'   Standard format for geographical data. It can be opened by Google Maps, Google Earth, etc;
-    'kmz'   Zipped kml, good for online use (eg Google Maps). The file size is significantly reduced;
-    'csv'   Comma separated values, the preferred format for further data processing with any other software;
-    'web'   This stores json, kml and csv in the same folder requested. This is used by the web interface to
-            prepare files for export.
-    none    If no extension is found, a new folder is created and ALL output formats are stored.
+    'json'    JavaScript data structure, used to provide data to the web interface;
+    'kml'     Standard format for geographical data. It can be opened by Google Maps, Google Earth, etc;
+    'kmz'     Zipped kml, good for online use (eg Google Maps). The file size is significantly reduced;
+    'csv'     Comma separated values, the preferred format for further data processing with any other software;
+    'csv.zip' Zipped csv file;
+    'web'     This stores json, kml and csv.zip in the same folder requested. This is used by the web interface to
+              prepare files for export.
+    none      If no extension is found, a new folder is created and ALL output formats are stored.
 
 
 NOTE: DEBUGGING SYSTEM AND PROGRESS UPDATER
@@ -813,10 +814,10 @@ class flight:
                 longitudeProfile[i] += 180
 
             if longitudeProfile[i] > 180:
-                n = (round(latitudeProfile[i])-180)/360 + 1
+                n = (round(longitudeProfile[i])-180)/360 + 1
                 longitudeProfile[i] -= n * 360
             elif longitudeProfile[i] <= -180:
-                n = (round(latitudeProfile[i])-180)/360 + 1
+                n = (round(longitudeProfile[i])-180)/360 + 1
                 longitudeProfile[i] += n * 360
 
 
@@ -1086,7 +1087,7 @@ class flight:
                     outputKml.close()
 
 
-            elif data_format in ('csv', 'CSV'):
+            elif data_format in ('csv', 'CSV', 'csv.zip', 'CSV.ZIP'):
                 # GENERATE CSV FILE OUT OF RESULTS
 
                 # Calculate how many rows we need in total
@@ -1137,10 +1138,38 @@ class flight:
                                 'Remarks']
 
                 # Save file
-                numpy.savetxt(outputPath, csvMatrix, delimiter=',', fmt='%s')
+                if data_format in ('csv', 'CSV'):
 
-                # Create a zipped version of the file, since it's probably big (approx 150KB/simulation not compressed)
-                numpy.savetxt(outputPath + '.gz', csvMatrix, delimiter=',', fmt='%s')
+                    numpy.savetxt(outputPath, csvMatrix, delimiter=',', fmt='%s')
+
+                else:
+                    import zipfile, tempfile
+
+                    try:
+                        outputCsv = tempfile.NamedTemporaryFile()
+                    except IOError:
+                        logger.error('Error: cannot create a new temporary file')
+                        return
+
+                    # Create a zipped version of the file, since it's probably big (approx 150KB/simulation not compressed)
+                    numpy.savetxt(outputCsv, csvMatrix, delimiter=',', fmt='%s')
+                    outputCsv.flush()
+
+                    # Zip CSV file
+                    try:
+                        import zlib
+
+                        zipCompression = zipfile.ZIP_DEFLATED
+                    except:
+                        zipCompression = zipfile.ZIP_STORED
+
+                    with zipfile.ZipFile(outputPath, 'w') as zipCsv:
+                        zipCsv.write(outputCsv.name, arcname='ASTRA Simulation Results.csv', compress_type=zipCompression)
+                    zipCsv.close()
+                    outputCsv.close()
+
+                    logger.debug(('CSV-ZIP file generated! ', self.outputFile))
+
 
 
             else:
@@ -1172,14 +1201,14 @@ class flight:
                 if not os.path.isdir(self.outputFile):
                     logger.error('The specified output path already exists. Change it or add an extension.')
 
-            for data_format in ['json', 'kml', 'kmz', 'csv']:
+            for data_format in ['json', 'kml', 'kmz', 'csv', 'csv.zip']:
                 path = fileName + '/' + fileName.split('/')[-1] + '.' + data_format
                 store_data(path, data_format)
 
         elif fileExtension == 'web':
             # If file has extension web, store json, kml and csv.gz
 
-            for data_format in ['json', 'kml', 'csv']:
+            for data_format in ['json', 'kml', 'csv.zip']:
                 path = fileName + '.' + data_format
                 store_data(path, data_format)
 
