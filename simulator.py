@@ -998,9 +998,10 @@ class flight:
                     for eachPoint in numpy.transpose(flightResult[2:5]):
                         if thisFlightHasBurst is False and pointNumber % 10 == 0:
                             kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
-                        kmlPath.append(
-                            '</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</LineString>\n</Placemark>\n')
                         pointNumber += 1
+
+                    kmlPath.append(
+                        '</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</LineString>\n</Placemark>\n')
 
                     kmlPaths.append(''.join(kmlPath))
 
