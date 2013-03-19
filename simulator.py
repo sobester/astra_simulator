@@ -814,10 +814,10 @@ class flight:
                 longitudeProfile[i] += 180
 
             if longitudeProfile[i] > 180:
-                n = (round(longitudeProfile[i])-180)/360 + 1
+                n = int(longitudeProfile[i]-180)/360 + 1
                 longitudeProfile[i] -= n * 360
             elif longitudeProfile[i] <= -180:
-                n = (round(longitudeProfile[i])-180)/360 + 1
+                n = int(abs(longitudeProfile[i])-180)/360 + 1
                 longitudeProfile[i] += n * 360
 
 
