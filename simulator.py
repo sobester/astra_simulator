@@ -994,10 +994,13 @@ class flight:
                         '<Placemark>\n<name>Simulation %d</name>\n<styleUrl>#stratoLine</styleUrl>\n<LineString>\n<coordinates>\n' % (
                             flightResult[0])]
 
+                    pointNumber = 0
                     for eachPoint in numpy.transpose(flightResult[2:5]):
-                        kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
-                    kmlPath.append(
-                        '</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</LineString>\n</Placemark>\n')
+                        if not thisFlightHasBurst and pointNumber % 10 == 0:
+                            kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
+                        kmlPath.append(
+                            '</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</LineString>\n</Placemark>\n')
+                        pointNumber += 1
 
                     kmlPaths.append(''.join(kmlPath))
 
