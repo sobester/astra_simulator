@@ -763,7 +763,7 @@ class flight:
             solution = odeint(ode, initialConditions, timeVector, rtol=1e-3, atol=1e-3)
         else:
             solution = odeint(ode, initialConditions, timeVector)
-            ###################
+        ###################
 
         logger.debug('Integration completed. Post-processing...')
 
@@ -996,7 +996,10 @@ class flight:
 
                     pointNumber = 0
                     for eachPoint in numpy.transpose(flightResult[2:5]):
-                        if thisFlightHasBurst is False and pointNumber % 10 == 0:
+                        if thisFlightHasBurst:
+                            if pointNumber % 10 == 0:
+                                kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
+                        else:
                             kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
                         pointNumber += 1
 
