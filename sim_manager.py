@@ -26,11 +26,11 @@ Arguments are:
     -t [date and time], required.  NOTE: Format should be exactly 'dd/mm/yyyy HH:mm +0000', where +0000 indicated the
         time zone offset from UTC (for example, Central European Summer time is +0200). This is important in order to
         download the correct weather forecast
-    -b [balloon weight in kg], required
+    -b [balloon model ID], required
     -g ['Helium' or 'Hydrogen'], required
     -n [nozzle lift in kg], required
     -p [payload weight in kg], required
-    -c [parachute type (3 or 4)], required
+    -c [parachute model ID], required
     -h [train equivalent sphere diameter in m], required
     -r [number of sim runs], required
     -o [output filename], required
@@ -105,7 +105,7 @@ def main(argv):
         elif opt in '-p':
             simFlight.payloadTrainWeight = float(arg)
         elif opt in '-c':
-            simFlight.parachuteType = int(arg)
+            simFlight.parachuteModel = arg
         elif opt in '-h':
             simFlight.trainEquivSphereDiam = float(arg)
         elif opt in '-r':

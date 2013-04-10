@@ -42,12 +42,10 @@ The following parameters of the flight object need to be defined (parameters in 
     environment         an environment object (either soundingEnvironment or forecastEnvironment) already configured
         with the environmental model. See the Weather Module for more information.
     balloonGasType      'Helium'|'Hydrogen' (type: string)
-    balloonModel        model of the balloon. Accepted values can be found in available_balloons.py. (type: string)
+    balloonModel        model of the balloon. Accepted values can be found in available_balloons_parachutes.py. (type: string)
     nozzleLift          nozzle lift in kg (type: float)
     payloadTrainWeight  weight of the payload train in kg (type: float)
-    parachuteType       0 for no parachute
-                        3 for Rocketman 3ft, Spherachute 36", Totex
-                        4 for Rocketman 4ft (type: int)
+    parachuteModel      model of the parachute. Accepted values can be found in available_balloons_parachutes.py. (type: string)
     trainEquivSphereDiam  the diameter (in meters) of sphere that generates the same drag as the train (type: float)
     numberOfSimRuns     total number of simulations to be run. If 1, a deterministic simulation is run. If >1,
         Monte Carlo perturbations are applied to each simulation (type: int)
@@ -154,10 +152,10 @@ environment object):
 
     my_flight_simulation.environment = my_environment_object
     my_flight_simulation.balloonGasType = 'Helium'
-    my_flight_simulation.balloonWeight = 0.8
+    my_flight_simulation.balloonModel = 'TA800'
     my_flight_simulation.nozzleLift = 1.1
     my_flight_simulation.payloadTrainWeight = 0.43
-    my_flight_simulation.parachuteType = 3
+    my_flight_simulation.parachuteModel = 'SPH36'
     my_flight_simulation.trainEquivSphereDiam = 0.1
     my_flight_simulation.numberOfSimRuns = 10
     my_flight_simulation.floatingFlight = True
@@ -175,10 +173,10 @@ An advanced usage of the Simulator could be as follows:
 
     my_flight_simulation.environment = my_environment_object
     my_flight_simulation.balloonGasType = 'Helium'
-    my_flight_simulation.balloonWeight = 0.8
+    my_flight_simulation.balloonModel = 'TA800'
     my_flight_simulation.nozzleLift = 1.1
     my_flight_simulation.payloadTrainWeight = 0.43
-    my_flight_simulation.parachuteType = 3
+    my_flight_simulation.parachuteModel = 'SPH36'
     my_flight_simulation.trainEquivSphereDiam = 0.1
     my_flight_simulation.numberOfSimRuns = 10
     my_flight_simulation.floatingFlight = True
@@ -210,7 +208,7 @@ from scipy.integrate import odeint
 from flight_tools import flight_tools
 from weather import *
 import drag_helium
-import available_balloons
+import available_balloons_parachutes
 
 # Error and warning logger
 logger = None
@@ -229,7 +227,7 @@ class flight:
         self.balloonModel = None            # See available_balloons
         self.nozzleLift = 0.0               # kg
         self.payloadTrainWeight = 0.0       # kg
-        self.parachuteType = 0
+        self.parachuteModel = None
         self.numberOfSimRuns = 0
         self.trainEquivSphereDiam = 0.0     # m
         self.floatingFlight = False
@@ -381,9 +379,13 @@ class flight:
             logger.warning(
                 'Warning: An invalid gas type for this flight was found. The calculation will carry on with Helium.')
             self.balloonGasType = 'Helium'
-        if not self.balloonModel in available_balloons.balloons.keys():
+        if not self.balloonModel in available_balloons_parachutes.balloons.keys():
             logger.error(
-                'An invalid balloon model was found. Supported models are %s. Please correct it.', available_balloons.balloons.keys())
+                'An invalid balloon model was found. Supported models are %s. Please correct it.', available_balloons_parachutes.balloons.keys())
+            toBreak = True
+        if self.parachuteModel is not None and not self.parachuteModel in available_balloons_parachutes.parachutes.keys():
+            logger.error(
+                'An invalid parachute model was found. Supported models are None or %s. Please correct it.', available_balloons_parachutes.parachutes.keys())
             toBreak = True
         if self.nozzleLift == 0.0:
             logger.error('Nozzle lift cannot be zero!')
@@ -391,8 +393,6 @@ class flight:
         if self.payloadTrainWeight == 0.0:
             logger.error('Payload train weight cannot be zero!')
             toBreak = True
-        # if self.parachuteType == 0:
-        #     logger.warning('Warning: Are you sure there is no parachute?')
         if self.numberOfSimRuns == 0:
             logger.error('The number of sim runs cannot be zero!')
             toBreak = True
@@ -435,10 +435,10 @@ class flight:
 
         # Balloon performance estimation
         # According to the balloon weight entered, select the related mean burst diameter and its Weibull coefficients.
-        self._balloonWeight = available_balloons.balloons[self.balloonModel][0]
-        self._meanBurstDia = available_balloons.meanToNominalBurstRatio * available_balloons.balloons[self.balloonModel][1]
-        self._weibull_lambda = available_balloons.balloons[self.balloonModel][2]
-        self._weibull_k = available_balloons.balloons[self.balloonModel][3]
+        self._balloonWeight = available_balloons_parachutes.balloons[self.balloonModel][0]
+        self._meanBurstDia = available_balloons_parachutes.meanToNominalBurstRatio * available_balloons_parachutes.balloons[self.balloonModel][1]
+        self._weibull_lambda = available_balloons_parachutes.balloons[self.balloonModel][2]
+        self._weibull_k = available_balloons_parachutes.balloons[self.balloonModel][3]
 
         logger.debug('Balloon performance: Mean burst diameter: %.4f, Lambda: %.4f, k: %4f' % (
             self._meanBurstDia, self._weibull_lambda, self._weibull_k))
@@ -544,7 +544,7 @@ class flight:
 
 
         # Configure the flight tools for the correct parachute
-        self.flightTools.parachuteType = self.parachuteType
+        self.flightTools.parachuteAref = available_balloons_parachutes.parachutes[self.parachuteModel]
 
         self._preflightCompleted = True
 
@@ -730,7 +730,7 @@ class flight:
                                                              altitude, currentTime)
                 currentViscosity = self.environment.getViscosity(self._currentLatPosition, self._currentLonPosition,
                                                                  altitude, currentTime)
-                if self.parachuteType == 0:
+                if self.parachuteModel == None:
                     parachuteDrag = 0
                 else:
                     parachuteDrag = self.flightTools.parachuteDrag(abs(ascentRate), currentDensity)

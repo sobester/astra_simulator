@@ -18,8 +18,8 @@ from datetime import datetime, timedelta
 from simulator import *
 
 
-simEnvironment = forecastEnvironment(debugging=False, log_to_file=False)
-simFlight = flight(debugging=False, log_to_file=False)
+simEnvironment = forecastEnvironment(debugging=True, log_to_file=False)
+simFlight = flight(debugging=True, log_to_file=False)
 
 # Environment parameters
 # Launch site: Daytona Beach, FL
@@ -42,7 +42,7 @@ simFlight.balloonGasType = 'Helium'
 simFlight.balloonModel = 'TA800'
 simFlight.nozzleLift = 1                                # kg
 simFlight.payloadTrainWeight = 0.433                    # kg
-simFlight.parachuteType = 3
+simFlight.parachuteModel = 'SPH36'
 simFlight.numberOfSimRuns = 25
 simFlight.trainEquivSphereDiam = 0.1                    # m
 simFlight.floatingFlight = False

@@ -106,7 +106,7 @@ class flight_tools:
     transition = 0.0
     ReBand = 0.0
 
-    parachuteType = 0
+    parachuteAref = 0
     parachuteCD = 0.0
 
 
@@ -240,10 +240,5 @@ class flight_tools:
                 density: current air density [kg/m3]
         """
 
-        try:
-            Aref = {3: 0.6567,
-                    4: 1.1674}[self.parachuteType]
-        except KeyError:
-            raise ValueError('Unknown parachute!')
 
-        return 0.5 * density * descentRate ** 2 * Aref * self.parachuteCD
+        return 0.5 * density * descentRate ** 2 * self.parachuteAref * self.parachuteCD
