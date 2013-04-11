@@ -471,7 +471,7 @@ class flight:
             self._transition.append(3.296)
             self._ReBand.append(0.363)
             self._burstDiameter.append(self._meanBurstDia)
-            self._parachuteCD.append(0.8)
+            self._parachuteCD.append(0.9)
             self._balloonReturnFraction.append(0.03)
         else:
             # Monte Carlo simulation: perturb values
@@ -482,7 +482,7 @@ class flight:
                 self._transition.append(drag_helium.transitions[mcIndex, 2])
                 self._ReBand.append(drag_helium.transitions[mcIndex, 3])
                 self._balloonReturnFraction.append(0.03 + numpy.random.random() * (1 - 0.03))
-                self._parachuteCD.append(0.6 + 0.2 * numpy.random.random())
+                self._parachuteCD.append(0.9 + 0.2 * numpy.random.random() * (-1)**round(numpy.random.random()))
                 self._burstDiameter.append(self._weibull_lambda * numpy.random.weibull(self._weibull_k))
                 # Perturb the wind for Monte Carlo.
             self.environment.perturbWind(self.numberOfSimRuns)
