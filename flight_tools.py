@@ -79,7 +79,7 @@ The methods available are:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"

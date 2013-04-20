@@ -12,6 +12,7 @@ This module loads a table of wind perturbations as a function of the distance fr
 the wind for the purpose of Monte Carlo simulations.
 Note: this module is only used for sounding-based flights.
 
+Data courtesy of Dr Andras Sobester
 
 USAGE
 --------------
@@ -22,9 +23,7 @@ correspond.
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
-
-Data courtesy of Dr Andras Sobester
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"

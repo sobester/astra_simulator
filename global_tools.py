@@ -100,6 +100,16 @@ The functions available are:
         Parameters:
             seconds: number of seconds to be converted
 
+    getUTCOffset(latitude, longitude, timestamp)
+        Use the Google Maps API Time Zone service to obtain UTC offset information about
+        the given location.
+        Returns a string in the format '+HHMM'
+
+        Parameters:
+            latitude: latitude of the location
+            longitude: longitude of the location
+            date_time: datetime object
+
     find_nearest_index(array,value)
         Find the index of the entry in the array which is nearest to value.
         Returns an integer with the index.
@@ -128,7 +138,7 @@ The functions available are:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -306,9 +316,19 @@ def prettySeconds(seconds):
             seconds: number of seconds to be converted
     """
 
+    is_negative = seconds < 0
+
+    seconds = abs(seconds)
     hours = seconds // 3600
     minutes = (seconds // 60) % 60
     secs = seconds - minutes * 60 - hours * 3600
+
+    if is_negative:
+        if hours == 0:
+            if minutes == 0:
+                secs *= -1
+            minutes *= -1
+        hours *= -1
 
     return hours, minutes, secs
 
@@ -325,6 +345,43 @@ def find_nearest_index(array, value):
     """
 
     return numpy.abs(array - value).argmin()
+
+
+def getUTCOffset(latitude, longitude, date_time):
+    """
+    getUTCOffset(latitude, longitude, timestamp)
+        Use the Google Maps API Time Zone service to obtain UTC offset information about
+        the given location.
+        Returns a float with the UTC offset in hours
+
+        Parameters:
+            latitude: latitude of the location
+            longitude: longitude of the location
+            date_time: datetime object
+    """
+
+    import urllib2, time, json
+
+    timestamp = time.mktime(date_time.timetuple())
+
+    requestURL = "https://maps.googleapis.com/maps/api/timezone/json?location=%f,%f&timestamp=%d&sensor=true" % (
+        latitude,
+        longitude,
+        timestamp
+    )
+
+
+    try:
+        HTTPresponse = urllib2.urlopen(requestURL)
+    except:
+        return 0
+
+    data = json.JSONDecoder().decode(HTTPresponse.read())
+    if str(data['status']) == 'OK':
+        total_seconds = data['dstOffset'] + data['rawOffset']
+        return total_seconds / 3600.
+    else:
+        return 0
 
 
 def ISAatmosphere(altitude=None, temperature=None, density=None, pressure=None, speedOfSound=None):

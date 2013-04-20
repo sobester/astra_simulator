@@ -8,7 +8,7 @@ DESCRIPTION
 Example: Sounding based Simulation
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -31,7 +31,6 @@ simEnvironment.distanceFromSounding = 0                 # km
 simEnvironment.timeFromSounding = 3                     # hours
 simEnvironment.inflationTemperature = 10.5              # degC
 simEnvironment.dateAndTime = datetime.now()
-simEnvironment.UTC_offset = 0
 simEnvironment.loadSounding('/path/to/myFile.sounding')
 
 # Launch parameters

@@ -15,7 +15,7 @@ need to be necessarily uniform).
 Linear4DInterpolator essentially isolates the 4D hyper-tetrahedron inside which the requested point lies and performs
 a quadrilinear interpolation using the 16 vertices of that hyper-tetrahedron only.
 
-This method has proved much faster than scipy's interpolate.LinearNDInterpolator, which is based on Qhull's
+This method has proven much faster than scipy's interpolate.LinearNDInterpolator, which is based on Qhull's
 triangulation method, very slow on rectangular grids.
 
 Although this implementation of the interpolator has been specifically designed for use with the Global Forecast System
@@ -46,7 +46,7 @@ Instantiate a new Linear4DInterpolator object by providing it with the following
                     and so on.
                     Note: to make sure this is formatted correctly, use the GFS.GFS_Map to prepare the mapping and then
                     use its mapCoordinates() method to generate the variable to be used here as the map input.
-                    These are used for interpolation.
+                    These are used for correct interpolation.
 
 
 2. CALLING - DATA REQUEST
@@ -59,7 +59,7 @@ The standard syntax to request data is as follows:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"

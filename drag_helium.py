@@ -11,6 +11,7 @@ Drag Helium
 This module loads a table of drag data and transitions used to calculate deviations from standard parametrised drag
 model in Monte Carlo simulations.
 
+Data courtesy of Dr Andras Sobester
 
 USAGE
 --------------
@@ -22,9 +23,7 @@ and ReBand respectively.
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
-
-Data courtesy of Dr Andras Sobester
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"

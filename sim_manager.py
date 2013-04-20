@@ -23,9 +23,8 @@ Arguments are:
     -x [longitude], required
     -y [latitude], required
     -z [elevation], required
-    -t [date and time], required.  NOTE: Format should be exactly 'dd/mm/yyyy HH:mm +0000', where +0000 indicated the
-        time zone offset from UTC (for example, Central European Summer time is +0200). This is important in order to
-        download the correct weather forecast
+    -t [date and time], required.  NOTE: Format should be exactly 'dd/mm/yyyy HH:mm', at the launch site's local
+        time.
     -b [balloon model ID], required
     -g ['Helium' or 'Hydrogen'], required
     -n [nozzle lift in kg], required
@@ -44,10 +43,10 @@ Arguments are:
         -f|--float -a [altitude in m] -l [maximum flight time limit in hours]
 
 
-Type python sim_manager.py --help for documentation.
+Type python sim_manager.py --help to see this documentation.
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -93,9 +92,8 @@ def main(argv):
             forecastWxr.launchSiteElev = float(arg)
             soundingWxr.launchSiteElev = float(arg)
         elif opt in '-t':
-            forecastWxr.UTC_offset = int(arg[-5:-2]) + float(arg[-2:]) / 60
-            forecastWxr.dateAndTime = datetime.strptime(arg[:-6], '%d/%m/%Y %H:%M')
-            soundingWxr.dateAndTime = datetime.strptime(arg[:-6], '%d/%m/%Y %H:%M')
+            forecastWxr.dateAndTime = datetime.strptime(arg, '%d/%m/%Y %H:%M')
+            soundingWxr.dateAndTime = datetime.strptime(arg, '%d/%m/%Y %H:%M')
         elif opt in '-b':
             simFlight.balloonModel = arg
         elif opt in '-g':

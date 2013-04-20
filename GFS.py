@@ -8,10 +8,11 @@ DESCRIPTION
 --------------
 
 GFS Module
-Connect to the NOAA's Global Forecast System and download weather forecast data for any location on the planet for
-up to 7 days from the last cycle.
-The data is downloaded from the HD service, providing data on a  0.5 deg latitude x 0.5 deg longitude x 47 altitude
-levels grid.
+Connects to the NOAA's Global Forecast System and downloads weather forecast data for any location on the planet for
+up to 7 days from the closest cycle.
+The data is downloaded from either the HD service, providing data on a 0.5 deg latitude x 0.5 deg longitude x 47 altitude
+levels grid, or from the SD service, with a coarser grid. Note that even when the SD service is used, the high altitude
+data is always requested in HD since the SD coverage is only up to 10mB pressure alt.
 The NOAA issues new datasets (cycles) at 00:00, 06:00, 12:00 and 18:00 UTC every day and the 7 days of forecast data
 refer to the cycle issuing time.
 
@@ -86,7 +87,7 @@ Typical usage of the GFS module:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"

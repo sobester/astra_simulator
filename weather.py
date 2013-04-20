@@ -32,7 +32,8 @@ Such interface has the following variables and methods:
         launchSiteLon: longitude of the launch site [deg] (type: float)
         launchSiteElev: elevation of the launch site above Mean Sea Level [m] (type: float)
         dateAndTime: the launch local time (type: datetime.datetime)
-        UTC_offset: the local time zone's offset from UTC, in hours (type: float)
+        UTC_offset: the local time zone's offset from UTC, in hours. See NOTE below about automatic UTC offset
+            (type: float)
         inflationTemperature: the ambient temperature during the balloon inflation [degC] (type: float)
     METHODS
         getTemperature(lat,lon,alt,time): request the temperature for the point at the given location at the given time.
@@ -52,9 +53,18 @@ Such interface has the following variables and methods:
 
 Refer to the individual classes and subclasses for details on how to use them.
 
+NOTE: AUTOMATIC UTC OFFSET
+--------------
+
+The UTC offset can be automatically retrieved for any LAND location by using Google Maps API's Time Zone service.
+By default, the UTC offset is automatically retrieved using the launch site GPS location if the UTC_offset is set to 0.
+
+See documentation for the global_tools.getUTCOffset() function for more information.
+
+
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -435,6 +445,9 @@ class soundingEnvironment(environment):
 
             return True
 
+        if self.UTC_offset == 0:
+            self.UTC_offset = tools.getUTCOffset(self.launchSiteLat,self.launchSiteLon,self.dateAndTime)
+            logger.debug('Fetched time zone data about the launch site: UTC offset is %f hours' % self.UTC_offset)
 
         self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
 
@@ -777,11 +790,15 @@ class forecastEnvironment(environment):
             logger.error('The flight date and time has not been set and is required!')
             return
 
+        if self.UTC_offset == 0:
+            self.UTC_offset = tools.getUTCOffset(self.launchSiteLat,self.launchSiteLon,self.dateAndTime)
+            logger.debug('Fetched time zone data about the launch site: UTC offset is %f hours' % self.UTC_offset)
+
         self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
 
         # Setup the GFS link
         self.handler = GFS.GFS_Handler(self.launchSiteLat, self.launchSiteLon, self._UTC_time,
-                                       HD={True: False, False: True}[self.forceNonHD],
+                                       HD=self.forceNonHD is False,
                                        forecast_duration=int(self.maxFlightTime / 3600.), debugging=self.debugging,
                                        log_to_file=self.file_logging)
         self._GFSmodule = self.handler

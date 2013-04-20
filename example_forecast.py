@@ -8,7 +8,7 @@ DESCRIPTION
 Example: Forecast based Simulation
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 12/02/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -28,7 +28,6 @@ simEnvironment.launchSiteLat = 29.2108                  # deg
 simEnvironment.launchSiteLon = -81.0228                 # deg
 simEnvironment.launchSiteElev = 4                       # m
 simEnvironment.dateAndTime = datetime.now() + timedelta(days=1)
-simEnvironment.UTC_offset = 0
 simEnvironment.forceNonHD = True
 
 # The forecast download is automatically called by the flight object below.
