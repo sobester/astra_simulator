@@ -450,6 +450,7 @@ class soundingEnvironment(environment):
             logger.debug('Fetched time zone data about the launch site: UTC offset is %f hours' % self.UTC_offset)
 
         self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
+        logger.debug('Using UTC time %s' % self._UTC_time.strftime('%d/%m/%y %H:%m'))
 
         if soundingFile[-3:] == 'ftr':
             # READ THE .FTR INPUT FILE AND PASS ITS DATA TO THE process_sounding_data(...) METHOD.
@@ -795,6 +796,7 @@ class forecastEnvironment(environment):
             logger.debug('Fetched time zone data about the launch site: UTC offset is %f hours' % self.UTC_offset)
 
         self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
+        logger.debug('Using UTC time %s' % self._UTC_time.strftime('%d/%m/%y %H:%m'))
 
         # Setup the GFS link
         self.handler = GFS.GFS_Handler(self.launchSiteLat, self.launchSiteLon, self._UTC_time,
