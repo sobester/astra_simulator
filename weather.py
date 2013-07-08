@@ -450,7 +450,7 @@ class soundingEnvironment(environment):
             logger.debug('Fetched time zone data about the launch site: UTC offset is %f hours' % self.UTC_offset)
 
         self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
-        logger.debug('Using UTC time %s' % self._UTC_time.strftime('%d/%m/%y %H:%m'))
+        logger.debug('Using UTC time %s' % self._UTC_time.strftime('%d/%m/%y %H:%M'))
 
         if soundingFile[-3:] == 'ftr':
             # READ THE .FTR INPUT FILE AND PASS ITS DATA TO THE process_sounding_data(...) METHOD.
@@ -536,11 +536,11 @@ class soundingEnvironment(environment):
             # Detect first line of useful data
             startLine = 0
             for i in xrange(len(filelines)):
-                if filelines[i][0] == '-':
+                if filelines[i][0] == '-' and i < 25:
                     startLine = i + 1
 
             if startLine == 0:
-                logger.error('Sounding file format does not follow standards!')
+                logger.error('Sounding file format does not follow format standards!')
                 self._weatherLoaded = False
 
             # Import data into variables
