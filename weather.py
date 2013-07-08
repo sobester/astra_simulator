@@ -271,7 +271,7 @@ class soundingEnvironment(environment):
         time arguments for the get... methods are optional.
         """
 
-        def process_sounding_data(PRESS, HGHT, TEMP, SKNT, DRCT):
+        def process_sounding_data(PRESS, HGHT, TEMP, DRCT, SKNT):
             """
             This is an internal method responsible for processing raw data fetched from the sounding file.
 

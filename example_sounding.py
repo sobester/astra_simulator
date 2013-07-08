@@ -18,8 +18,8 @@ from datetime import datetime
 from simulator import *
 
 
-simEnvironment = soundingEnvironment(debugging=True, log_to_file=False)
-simFlight = flight(debugging=True, log_to_file=False)
+simEnvironment = soundingEnvironment(debugging=False, log_to_file=False)
+simFlight = flight(debugging=False, log_to_file=False)
 
 # Environment parameters
 # Launch site: University of Southampton
@@ -31,7 +31,7 @@ simEnvironment.distanceFromSounding = 0                 # km
 simEnvironment.timeFromSounding = 3                     # hours
 simEnvironment.inflationTemperature = 10.5              # degC
 simEnvironment.dateAndTime = datetime.now()
-simEnvironment.loadSounding('/Users/nick/Desktop/University of Wyoming - Radiosonde Data.sounding')
+simEnvironment.loadSounding('/path/to/myFile.sounding')
 
 # Launch parameters
 simFlight.environment = simEnvironment
@@ -40,13 +40,13 @@ simFlight.balloonModel = "TA800"
 simFlight.nozzleLift = 1                                # kg
 simFlight.payloadTrainWeight = 0.433                    # kg
 simFlight.parachuteModel = 'SPH36'
-simFlight.numberOfSimRuns = 3
+simFlight.numberOfSimRuns = 10
 simFlight.trainEquivSphereDiam = 0.1                    # m
 simFlight.floatingFlight = False
 simFlight.floatingAltitude = 30000                      # m
 simFlight.excessPressureCoeff = 1
 #simFlight.maxFlightTime = 5*60*60
-simFlight.outputFile = '/Users/nick/Desktop/Simulation_Results'
+simFlight.outputFile = '/path/to/Simulation_Results'
 
 
 # Run the simulation
