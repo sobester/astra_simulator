@@ -544,7 +544,10 @@ class flight:
 
 
         # Configure the flight tools for the correct parachute
-        self.flightTools.parachuteAref = available_balloons_parachutes.parachutes[self.parachuteModel]
+        if self.parachuteModel is not None:
+            self.flightTools.parachuteAref = available_balloons_parachutes.parachutes[self.parachuteModel]
+        else:
+            self.flightTools.parachuteAref = 0.0
 
         self._preflightCompleted = True
 
