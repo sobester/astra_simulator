@@ -9,15 +9,15 @@ DESCRIPTION
 
 GFS Module
 Connects to the NOAA's Global Forecast System and downloads weather forecast data for any location on the planet for
-up to 7 days from the closest cycle.
-The data is downloaded from either the HD service, providing data on a 0.5 deg latitude x 0.5 deg longitude x 47 altitude
-levels grid, or from the SD service, with a coarser grid. Note that even when the SD service is used, the high altitude
-data is always requested in HD since the SD coverage is only up to 10mB pressure alt.
-The NOAA issues new datasets (cycles) at 00:00, 06:00, 12:00 and 18:00 UTC every day and the 7 days of forecast data
+up to 10 days from the closest cycle.
+The data is downloaded from either the HD service, providing data on a 0.25 deg latitude x 0.25 deg longitude x 26 altitude
+levels grid, or from the SD service, with a coarser grid. Note that even when the HD service is used, the high altitude
+data is always requested in SD since the HD coverage is only up to 10mB pressure alt.
+The NOAA issues new datasets (cycles) at 00:00, 06:00, 12:00 and 18:00 UTC every day and the 10 days of forecast data
 refer to the cycle issuing time.
 
 Warning: because it's not possible to know in advance what the latest cycle available is (there is a delay between the
-cycle issuing time and its availability), it's recommended to limit the time span of data downloads from the GFS to 6
+cycle issuing time and its availability), it's recommended to limit the time span of data downloads from the GFS to 8
 days.
 
 
@@ -28,7 +28,7 @@ Instantiate a new GFS_Handler object to deal with data download from the GFS and
 When a new GFS_Handler object is instantiated, the following parameters are REQUIRED for initialization:
     lat                 latitude of the location where forecast is required. Type: float
     lon                 longitude of the location where forecast is required. Type: float
-    date_time           UTC time of the required forecast (min 30 days from today, max 7 days from latest cycle issuing
+    date_time           UTC time of the required forecast (min 30 days from today, max 10 days from latest cycle issuing
                         time, see warning above). Type: datetime.datetime
     forecast_duration   the duration in hours of the forecast data required. By default this is 4 hours. Type: float
 
@@ -87,7 +87,7 @@ Typical usage of the GFS module:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
+Niccolo' Zapponi, nz1g10@soton.ac.uk, 10/01/2015
 """
 
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
@@ -165,15 +165,15 @@ class GFS_Handler:
 
         # HD/SD forecast setup
         if self.HD:
+            self.latStep = 0.25
+            self.lonStep = 0.25
+            # Prepare download of high altitude SD data
+            self._highAltitudeGFS = GFS_High_Altitude_Handler(lat, lon, date_time, forecast_duration, debugging,
+                                                                  log_to_file)
+            self._highAltitudePressure = None
+        else:
             self.latStep = 0.5
             self.lonStep = 0.5
-        else:
-            self.latStep = 1.0
-            self.lonStep = 1.0
-            # Prepare download of high altitude HD data
-            self._highAltitudeGFS = GFS_High_Altitude_Handler(lat, lon, date_time, forecast_duration, debugging,
-                                                              log_to_file)
-            self._highAltitudePressure = None
 
         # SETUP ERROR LOGGING AND DEBUGGING
 
@@ -223,8 +223,8 @@ class GFS_Handler:
         # The base URL depends on whether the HD service has been requested or not.
         weatherParameters = ['tmpprs', 'hgtprs', 'ugrdprs', 'vgrdprs']
         baseURL = {
-            True: 'http://nomads.ncep.noaa.gov:9090/dods/gfs_hd/',
-            False: 'http://nomads.ncep.noaa.gov:9090/dods/gfs/'
+            True: 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p25/',
+            False: 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p50/'
         }[self.HD]
 
 
@@ -259,9 +259,9 @@ class GFS_Handler:
 
         # ALTITUDE (Download ALL altitude levels available)
         requestAltitude = {
-            True: [0, 46],
-            False: [0, 25]
-        }[self.HD]
+        	True: [0, 25],
+        	False: [0, 46]
+        }[self.HD];
 
         # LATITUDE
         targetLatitude = (round(self.lat) + 90) / self.latStep
@@ -271,21 +271,21 @@ class GFS_Handler:
             # Limit latitude to +/- 90 degrees
             if requestLatitude[0] < 0:
                 requestLatitude[0] = 0
-            if requestLatitude[1] > 360:
-                requestLatitude[1] = 360
+            if requestLatitude[1] > 720:
+                requestLatitude[1] = 720
 
             # Request all longitudes if close to the poles
-            if requestLatitude[0] < 20 or requestLatitude[1] > 340:
+            if requestLatitude[0] < 40 or requestLatitude[1] > 680:
                 requestAllLongitudes = True
         else:
         # Limit latitude to +/- 90 degrees
             if requestLatitude[0] < 0:
                 requestLatitude[0] = 0
-            if requestLatitude[1] > 180:
-                requestLatitude[1] = 180
+            if requestLatitude[1] > 360:
+                requestLatitude[1] = 360
 
             # Request all longitudes if close to the poles or if simulation is beyond 2 days
-            if requestLatitude[0] < 10 or requestLatitude[1] > 170 or self.maxFlightTime > 48:
+            if requestLatitude[0] < 20 or requestLatitude[1] > 340 or self.maxFlightTime > 48:
                 requestAllLongitudes = True
 
         # LONGITUDE
@@ -296,8 +296,8 @@ class GFS_Handler:
 
         if requestAllLongitudes:
             requestLongitude = {
-                True: [0, 719],
-                False: [0, 359]
+                True: [0, 1439],
+                False: [0, 719]
             }[self.HD]
         else:
             if self.lon >= 0:
@@ -310,14 +310,14 @@ class GFS_Handler:
             # Check if the values are within the bounds and correct if needed
             if self.HD:
                 if requestLongitude[0] < 0:
+                    requestLongitude[0] += 1440
+                if requestLongitude[1] > 1439:
+                    requestLongitude[1] -= 1440
+            else:
+                if requestLongitude[0] < 0:
                     requestLongitude[0] += 720
                 if requestLongitude[1] > 719:
                     requestLongitude[1] -= 720
-            else:
-                if requestLongitude[0] < 0:
-                    requestLongitude[0] += 360
-                if requestLongitude[1] > 359:
-                    requestLongitude[1] -= 360
 
             # Check if crossing the Greenwich meridian and split the requests
             # If the Greenwich meridian is being crossed, the left bound of the longitude interval will have a
@@ -326,8 +326,8 @@ class GFS_Handler:
             if requestLongitude[1] - requestLongitude[0] < 0:
                 # SPLIT
                 requestLongitude = {
-                    True: [[0, requestLongitude[1]], [requestLongitude[0], 719]],
-                    False: [[0, requestLongitude[1]], [requestLongitude[0], 359]]
+                    True: [[0, requestLongitude[1]], [requestLongitude[0], 1439]],
+                    False: [[0, requestLongitude[1]], [requestLongitude[0], 719]]
                 }[self.HD]
                 multipleRequests = True
 
@@ -384,13 +384,12 @@ class GFS_Handler:
                     else:
                         thisRequestLongitude = requestLongitude
 
-                    requestURL = '%sgfs%s%d%02d%02d/gfs%s_%02dz.ascii?%s[%d:%d][%d:%d][%d:%d][%d:%d]' % (
+                    requestURL = '%sgfs%d%02d%02d/gfs_%s_%02dz.ascii?%s[%d:%d][%d:%d][%d:%d][%d:%d]' % (
                         baseURL,
-                        {True: '_hd', False: ''}[self.HD],
                         thisCycle.year,
                         thisCycle.month,
                         thisCycle.day,
-                        {True: '_hd', False: ''}[self.HD],
+                        {True: '0p25', False: '0p50'}[self.HD],
                         thisCycle.hour,
                         requestVariable,
                         requestTime[0], requestTime[1],
@@ -487,8 +486,8 @@ class GFS_Handler:
         self.altitudeMap = geopotentialMap
         self.windsMap = uWindsMap
 
-        # IF NOT HD, DOWNLOAD HIGH ALTITUDE HD DATA
-        if not self.HD:
+        # DOWNLOAD HIGH ALTITUDE 0.5 x 0.5 DATA
+        if (self.HD):
             self._highAltitudeGFS.downloadForecast()
             self._highAltitudePressure = self._highAltitudeGFS.interpolateData('p')
 
@@ -521,7 +520,7 @@ class GFS_Handler:
         for variable in variables:
             if variable in ('temp', 't', 'temperature'):
                 # Interpolate temperature
-                if self.HD:
+                if not self.HD:
                     results.append(
                         GFS_data_interpolator(self, self.temperatureData, self.temperatureMap.mappingCoordinates))
                 else:
@@ -535,7 +534,7 @@ class GFS_Handler:
 
             elif variable in ('windrct', 'd', 'wind_direction'):
                 # Interpolate wind direction
-                if self.HD:
+                if not self.HD:
                     results.append(GFS_data_interpolator(self, self.windDirData, self.windsMap.mappingCoordinates))
                 else:
                     results.append(GFS_data_interpolator(self, self.windDirData, self.windsMap.mappingCoordinates,
@@ -543,7 +542,7 @@ class GFS_Handler:
 
             elif variable in ('windspd', 's', 'wind_speed'):
                 # Interpolate wind speed
-                if self.HD:
+                if not self.HD:
                     results.append(GFS_data_interpolator(self, self.windSpeedData, self.windsMap.mappingCoordinates))
                 else:
                     results.append(GFS_data_interpolator(self, self.windSpeedData, self.windsMap.mappingCoordinates,
@@ -761,7 +760,7 @@ class GFS_Handler:
             return self.altitudeMap.fwdPressure[0]
         elif altitude.max() < 0:
             # NEAREST NEIGHBOR: if requested point is above maximum altitude, return highest point available
-            if self.HD:
+            if not self.HD:
                 return self.altitudeMap.fwdPressure[-1]
             else:
                 return self._highAltitudePressure(lat, lon, alt, time)
@@ -810,7 +809,7 @@ class GFS_High_Altitude_Handler(GFS_Handler):
             self.latGridSize = 2 * ceil(0.1 * self.maxFlightTime + 0.6) + 3
             self.lonGridSize = 2 * ceil(0.9 * self.maxFlightTime) + 3
 
-        self.HD = True
+        self.HD = False
         self.latStep = 0.5
         self.lonStep = 0.5
 
@@ -861,7 +860,7 @@ class GFS_High_Altitude_Handler(GFS_Handler):
         # EXTRA PARAMETERS
         # The base URL depends on whether the HD service has been requested or not.
         weatherParameters = ['tmpprs', 'hgtprs', 'ugrdprs', 'vgrdprs']
-        baseURL = 'http://nomads.ncep.noaa.gov:9090/dods/gfs_hd/'
+        baseURL = 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p50/'
 
 
         #############################################################################################################
@@ -993,13 +992,11 @@ class GFS_High_Altitude_Handler(GFS_Handler):
                     else:
                         thisRequestLongitude = requestLongitude
 
-                    requestURL = '%sgfs%s%d%02d%02d/gfs%s_%02dz.ascii?%s[%d:%d][%d:%d][%d:%d][%d:%d]' % (
+                    requestURL = '%sgfs%d%02d%02d/gfs_0p50_%02dz.ascii?%s[%d:%d][%d:%d][%d:%d][%d:%d]' % (
                         baseURL,
-                        '_hd',
                         thisCycle.year,
                         thisCycle.month,
                         thisCycle.day,
-                        '_hd',
                         thisCycle.hour,
                         requestVariable,
                         requestTime[0], requestTime[1],
