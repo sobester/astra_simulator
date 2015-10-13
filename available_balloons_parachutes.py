@@ -70,6 +70,7 @@ meanToNominalBurstRatio = 1.08116
 parachutes = {
     "RCK3": 0.26615,
     "RCK4": 0.47315,
+    "RCK5": 0.73930,
     "SPH36": 0.45,
     "SPH48": 0.84,
     "SPH54": 0.59883,
