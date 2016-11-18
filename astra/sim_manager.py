@@ -55,7 +55,7 @@ import sys
 import getopt
 from datetime import datetime
 
-from simulator import *
+from .simulator import *
 
 
 def main(argv):
@@ -151,7 +151,7 @@ def main(argv):
 
 
 def usage():
-    print __doc__
+    print(__doc__)
 
 
 if __name__ == "__main__":

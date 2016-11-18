@@ -87,7 +87,7 @@ __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
 from math import pi
 
 
-class flight_tools:
+class flight_tools(object):
     """
     Flight Tools
     A collection of small flight-specific tools used throughout the simulation.

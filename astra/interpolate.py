@@ -69,7 +69,7 @@ from math import floor, ceil
 import numpy
 
 
-class Linear4DInterpolator:
+class Linear4DInterpolator(object):
     """
     The Linear4DInterpolator is a simple 4D linear interpolator, designed to work on rectangular grids only (they don't
     need to be necessarily uniform).

@@ -194,33 +194,32 @@ An advanced usage of the Simulator could be as follows:
 University of Southampton
 Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
-__author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
-
 from math import pi
 from datetime import timedelta
 from sys import stdout
 import os
 import logging
-
+from six.moves import range
 import numpy
 from scipy.integrate import odeint
-
-from flight_tools import flight_tools
-from weather import *
-import drag_helium
-import available_balloons_parachutes
+from .flight_tools import flight_tools
+from .weather import *
+from . import drag_helium
+from . import available_balloons_parachutes
 
 # Error and warning logger
-logger = None
+logger = logging.getLogger(__name__)
 
 
-class flight:
-    def __init__(self, debugging=False, log_to_file=False, progress_to_file=False):
+class flight(object):
+    def __init__(self,
+                 debugging=False,
+                 log_to_file=False,
+                 progress_to_file=False):
         """
-        Initialize all the parameters of the object and setup the debugging if required.
+        Initialize all the parameters of the object and setup the debugging if
+        required.
         """
-        global logger
-
         # User defined variables
         self.environment = None             # weather object
         self.balloonGasType = ''
@@ -278,30 +277,20 @@ class flight:
 
         self._totalStepsForProgress = 0
 
-
-        # SETUP ERROR LOGGING AND DEBUGGING
-
-        logger = logging.getLogger('Simulator')
-
         if debugging:
-            logger.setLevel(logging.DEBUG)
+            log_lev = logging.DEBUG
         else:
-            logger.setLevel(logging.WARNING)
+            log_lev = logging.WARNING
 
         if log_to_file:
-            log_handler = logging.FileHandler(filename='error.log')
-            log_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s')
+            logging.basicConfig(filename='error.log',
+                            filemode='a',
+                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt='%H:%M:%S',
+                            level=log_lev)
         else:
-            log_handler = logging.StreamHandler()
-            log_formatter = logging.Formatter('%(levelname)s - %(name)s - %(message)s')
+            logger.setLevel(log_lev)
 
-        if debugging:
-            log_handler.setLevel(logging.DEBUG)
-        else:
-            log_handler.setLevel(logging.WARNING)
-
-        log_handler.setFormatter(log_formatter)
-        logger.addHandler(log_handler)
 
 
     def run(self):
@@ -333,7 +322,7 @@ class flight:
 
         # ________________________________________________________________________________________ #
         # RUN THE FLIGHT SIMULATION
-        for flightNumber in xrange(self.numberOfSimRuns):
+        for flightNumber in range(self.numberOfSimRuns):
             logger.debug('SIMULATING FLIGHT %d' % (flightNumber + 1))
             self.fly(flightNumber)
             self.updateProgress(float(flightNumber + 1) / self._totalStepsForProgress, 0)
@@ -478,7 +467,7 @@ class flight:
             self._balloonReturnFraction.append(0.03)
         else:
             # Monte Carlo simulation: perturb values
-            for _ in xrange(self.numberOfSimRuns):
+            for _ in range(self.numberOfSimRuns):
                 mcIndex = numpy.random.random_integers(0, (numpy.size(drag_helium.transitions[:, 0])) - 1)
                 self._lowCD.append(drag_helium.transitions[mcIndex, 0])
                 self._highCD.append(drag_helium.transitions[mcIndex, 1])
@@ -822,7 +811,7 @@ class flight:
 
         # Check that latitude and longitude are within bounds and correct if they are not (for example, if the balloon
         # flew over the North or the South Pole).
-        for i in xrange(len(latitudeProfile)):
+        for i in range(len(latitudeProfile)):
             if latitudeProfile[i] > 90:
                 latitudeProfile[i] = 180 - latitudeProfile[i]
                 longitudeProfile[i] += 180
@@ -1074,7 +1063,7 @@ class flight:
                     import zipfile, tempfile
 
                     try:
-                        outputKml = tempfile.NamedTemporaryFile()
+                        outputKml = tempfile.NamedTemporaryFile(mode='w')
                     except IOError:
                         logger.error('Error: cannot create a new temporary file')
                         return
@@ -1135,7 +1124,7 @@ class flight:
                     thisFlightHasBurst = flightResult[7]
 
                     # Flight number, Time, Lat, Lon, Alt
-                    for i in xrange(5):
+                    for i in range(5):
                         csvMatrix[currentPosition:currentPosition + numberOfPoints, i] = flightResult[i]
 
                     # Remarks: Launch

@@ -145,6 +145,13 @@ __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
 
 from math import sqrt, exp, sin, cos, radians, atan, atan2, tan, pi
 import numpy
+import logging
+from six.moves.urllib.request import urlopen
+import time
+import json
+
+
+logger = logging.getLogger(__name__)
 
 
 def feet2m(lengthFeet):
@@ -231,7 +238,7 @@ def dirspeed2uv(windDirection, windSpeed, resultType=None):
     elif resultType == 'uv' or resultType is None:
         return u, v
     else:
-        print 'Unexpected argument format for resultType. Please refer to documentation.'
+        logger.error('Unexpected argument format for resultType. Please refer to documentation.')
 
 
 def uv2dirspeed(u, v):
@@ -359,9 +366,6 @@ def getUTCOffset(latitude, longitude, date_time):
             longitude: longitude of the location
             date_time: datetime object
     """
-
-    import urllib2, time, json
-
     timestamp = time.mktime(date_time.timetuple())
 
     requestURL = "https://maps.googleapis.com/maps/api/timezone/json?location=%f,%f&timestamp=%d&sensor=true" % (
@@ -372,11 +376,11 @@ def getUTCOffset(latitude, longitude, date_time):
 
 
     try:
-        HTTPresponse = urllib2.urlopen(requestURL)
+        HTTPresponse = urlopen(requestURL)
     except:
         return 0
 
-    data = json.JSONDecoder().decode(HTTPresponse.read())
+    data = json.loads(HTTPresponse.read().decode('utf-8'))
     if str(data['status']) == 'OK':
         total_seconds = data['dstOffset'] + data['rawOffset']
         return total_seconds / 3600.
@@ -467,23 +471,23 @@ def ISAatmosphere(altitude=None, temperature=None, density=None, pressure=None, 
     # CASE 1: All parameters known. Problem over-defined.
     # Arguments returned unchanged.
     if altitude is not None and temperature is not None and density is not None and pressure is not None and speedOfSound is not None:
-        print 'Overconstrained ISA problem. Arguments returned unchanged.'
+        logger.warning('Overconstrained ISA problem. Arguments returned unchanged.')
         return altitude, temperature, density, pressure, speedOfSound
 
     # CASE 2: All parameters unknown. Problem under-defined.
     # Arguments returned unchanged.
     if altitude is None and temperature is None and density is None and pressure is None and speedOfSound is None:
-        print 'Underconstrained ISA problem. Arguments returned unchanged.'
+        logger.warning('Underconstrained ISA problem. Arguments returned unchanged.')
         return altitude, temperature, density, pressure, speedOfSound
 
     # CASE 3: Only altitude known.
     if altitude is not None and temperature is None and density is None and pressure is None and speedOfSound is None:
 
         if altitude < 0:
-            print 'Altitude out of bounds, set to 0.'
+            logger.warning('Altitude out of bounds, set to 0.')
             altitude = 0
         elif feet2m(altitude) > Level5:
-            print 'Altitude out of bounds, set to 32km.'
+            logger.warning('Altitude out of bounds, set to 32km.')
             altitude = m2feet(Level5)
 
         altitudeM = feet2m(altitude)
@@ -547,5 +551,5 @@ def ISAatmosphere(altitude=None, temperature=None, density=None, pressure=None, 
 
             return altitude, temperature, density, pressure, speedOfSound
         else:
-            print 'Temperature out of bounds.'
+            logger.warning('Temperature out of bounds. Returning values unchanged')
             return altitude, temperature, density, pressure, speedOfSound

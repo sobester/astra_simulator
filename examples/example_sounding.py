@@ -15,7 +15,7 @@ __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
 
 from datetime import datetime
 
-from simulator import *
+from astra.simulator import *
 
 
 simEnvironment = soundingEnvironment(debugging=False, log_to_file=False)

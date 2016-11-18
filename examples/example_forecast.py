@@ -10,15 +10,13 @@ Example: Forecast based Simulation
 University of Southampton
 Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
-
-__author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
-
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 if __name__ == "__main__":
     from datetime import datetime, timedelta
 
-    from simulator import *
-
+    from astra.simulator import *
 
     simEnvironment = forecastEnvironment(debugging=True, log_to_file=False)
     simFlight = flight(debugging=True, log_to_file=False)

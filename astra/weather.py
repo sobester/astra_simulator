@@ -71,18 +71,20 @@ __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
 
 from datetime import timedelta
 import logging
-
+from six.moves import range
 import numpy
 from scipy.interpolate import UnivariateSpline
+from . import wind_time_perturbation
+from. import wind_space_perturbation
 
-import global_tools as tools
-import GFS
+from . import global_tools as tools
+from . import GFS
 
-# Error and warning logger
-logger = None
+# SETUP ERROR LOGGING AND DEBUGGING
 
+logger = logging.getLogger(__name__)
 
-class environment:
+class environment(object):
     """
     This class defines a common interface for the Simulator Module to deal with.
     Such interface has the following variables and methods:
@@ -110,20 +112,28 @@ class environment:
         Note: for all the methods above, lat [deg], lon [deg], alt [m], time [datetime.datetime].
     """
 
-    def __init__(self, debugging=False, log_to_file=False):
-        global logger
-
-        # Initialize the object
+    def __init__(self,
+        inflationTemperature=0.0,
+        launchSiteLat=0.0,
+        launchSiteLon=0.0,
+        launchSiteElev=0.0,
+        dateandTime=None,
+        UTC_offset=0.0,
+        debugging=False,
+        log_to_file=False):
 
         # COMMON INTERFACE
 
         # Variables
-        self.inflationTemperature = 0.0
-        self.launchSiteLat = 0.0
-        self.launchSiteLon = 0.0
-        self.launchSiteElev = 0.0
-        self.dateAndTime = None
-        self.UTC_offset = 0
+        # Set all kwargs as attributes - could move this to AirconicsBase
+        self.inflationTemperature = inflationTemperature
+        self.launchSiteLat = launchSiteLat
+        self.launchSiteLon = launchSiteLon
+        self.launchSiteElev = launchSiteElev
+        self.dateandTime = dateandTime
+        self.UTC_offset = UTC_offset
+
+        # TODO: Make these properties:
         # Calculated parameters
         self.getTemperature = None
         self.getPressure = None
@@ -132,6 +142,7 @@ class environment:
         self.getDensity = None
         self.getViscosity = None
         self._UTC_time = None
+
         # Monte Carlo parameters
         self.getMCWindDirection = []
         self.getMCWindSpeed = []
@@ -141,29 +152,19 @@ class environment:
 
         self._weatherLoaded = False
 
-        # SETUP ERROR LOGGING AND DEBUGGING
-
-        logger = logging.getLogger('Environment')
-
         if debugging:
-            logger.setLevel(logging.DEBUG)
+            log_lev = logging.DEBUG
         else:
-            logger.setLevel(logging.WARNING)
+            log_lev = logging.WARNING
 
         if log_to_file:
-            log_handler = logging.FileHandler(filename='error.log')
-            log_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s')
+            logging.basicConfig(filename='error.log',
+                            filemode='a',
+                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt='%H:%M:%S',
+                            level=log_lev)
         else:
-            log_handler = logging.StreamHandler()
-            log_formatter = logging.Formatter('%(levelname)s - %(name)s - %(message)s')
-
-        if debugging:
-            log_handler.setLevel(logging.DEBUG)
-        else:
-            log_handler.setLevel(logging.WARNING)
-
-        log_handler.setFormatter(log_formatter)
-        logger.addHandler(log_handler)
+            logger.setLevel(log_lev)
 
 
 class soundingEnvironment(environment):
@@ -535,7 +536,7 @@ class soundingEnvironment(environment):
 
             # Detect first line of useful data
             startLine = 0
-            for i in xrange(len(filelines)):
+            for i in range(len(filelines)):
                 if filelines[i][0] == '-' and i < 25:
                     startLine = i + 1
 
@@ -596,9 +597,6 @@ class soundingEnvironment(environment):
 
         self.getMCWindDirection = []
         self.getMCWindSpeed = []
-
-        import wind_time_perturbation
-        import wind_space_perturbation
 
         def make_perturbedWind(iDevTime, iDevSpace, randomChance, resultType=None):
             """
@@ -665,7 +663,7 @@ class soundingEnvironment(environment):
             return perturbedWind
 
         # Apply perturbations to flights
-        for _ in xrange(numberOfFlights):
+        for _ in range(numberOfFlights):
             # Pick a random deviation out of the available ones.
             devTime = numpy.random.random_integers(0, 1758)
             devSpace = numpy.random.random_integers(0, 896)
@@ -757,17 +755,34 @@ class forecastEnvironment(environment):
 
     """
 
-    def __init__(self, debugging=False, log_to_file=False):
+    def __init__(self,
+                 inflationTemperature=0.0,
+                 launchSiteLat=0.0,
+                 launchSiteLon=0.0,
+                 launchSiteElev=0.0,
+                 dateandTime=None,
+                 UTC_offset=0.0,
+                 forceNonHD=False,
+                 maxFlightTime=18000,
+                 debugging=False, log_to_file=False):
         """
         Initialize the forecastEnvironment object
         """
 
         # Run the environment class initialization first
-        environment.__init__(self, debugging, log_to_file)
+        super(forecastEnvironment, self).__init__(inflationTemperature=inflationTemperature,
+                                                  launchSiteLat=launchSiteLat,
+                                                  launchSiteLon=launchSiteLon,
+                                                  launchSiteElev=launchSiteElev,
+                                                  dateandTime=dateandTime,
+                                                  UTC_offset=UTC_offset,
+                                                  debugging=debugging,
+                                                  log_to_file=log_to_file)
 
         # Initialize extra forecast-specific variables
-        self.forceNonHD = False
-        self.maxFlightTime = 18000
+        self.forceNonHD = forceNonHD
+        self.maxFlightTime = maxFlightTime
+
         self._GFSmodule = None
 
     def loadForecast(self, progressHandler=None):

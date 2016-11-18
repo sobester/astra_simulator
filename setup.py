@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2016-11-17 17:34:50
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2016-11-17 17:54:29
+# @Last Modified time: 2016-11-18 11:51:25
 from setuptools import setup, find_packages
 import subprocess
 
@@ -21,7 +21,7 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     # package_data={'': ['*.dat']},
-    install_requires=["numpy", "scipy", "wxPython"],
+    install_requires=["numpy", "scipy"],
     author='Niccolo Zapponi, Paul Chambers',
     author_email='nz1g10@soton.ac.uk, P.R.Chambers@soton.ac.uk',
 )

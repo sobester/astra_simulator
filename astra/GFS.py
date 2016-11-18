@@ -94,23 +94,23 @@ __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
 
 from datetime import datetime, timedelta
 from math import floor, ceil
-import urllib2
+from six.moves import range
+from six.moves.urllib.request import urlopen
 import logging
 
 import numpy
 from scipy.interpolate import UnivariateSpline
 
-import global_tools as tools
-from interpolate import Linear4DInterpolator
-
+from . import global_tools as tools
+from .interpolate import Linear4DInterpolator
 
 # Error and warning logger
-logger = None
+logger = logging.getLogger(__name__)
 
-earthRadius = 6371009 # m
+earthRadius = 6371009  # m
 
 
-class GFS_Handler:
+class GFS_Handler(object):
     """
     Core of the GFS module.
     Use this to perform any operation related to the Global Forecast System.
@@ -118,8 +118,6 @@ class GFS_Handler:
     """
 
     def __init__(self, lat, lon, date_time, HD=True, forecast_duration=4, debugging=False, log_to_file=False):
-        global logger
-
         # Initialize Parameters
         self.launchDateTime = date_time
         self.lat = lat
@@ -175,29 +173,20 @@ class GFS_Handler:
             self.latStep = 0.5
             self.lonStep = 0.5
 
-        # SETUP ERROR LOGGING AND DEBUGGING
-
-        logger = logging.getLogger('GFS')
-
         if debugging:
-            logger.setLevel(logging.DEBUG)
+            log_lev = logging.DEBUG
         else:
-            logger.setLevel(logging.WARNING)
+            log_lev = logging.WARNING
 
         if log_to_file:
-            log_handler = logging.FileHandler(filename='error.log')
-            log_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s')
-        else:
-            log_handler = logging.StreamHandler()
-            log_formatter = logging.Formatter('%(levelname)s - %(name)s - %(message)s')
+            logging.basicConfig(filename='error.log',
+                            filemode='a',
+                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt='%H:%M:%S',
+                            level=log_lev)
+        # else:
+        #     logger.setLevel(log_lev)
 
-        if debugging:
-            log_handler.setLevel(logging.DEBUG)
-        else:
-            log_handler.setLevel(logging.WARNING)
-
-        log_handler.setFormatter(log_formatter)
-        logger.addHandler(log_handler)
 
 
     def downloadForecast(self, progressHandler=None):
@@ -377,7 +366,7 @@ class GFS_Handler:
                 dataResults = []
 
                 # Check if we need more than 1 request (ie if we are crossing the Greenwich meridian)
-                for req_number in xrange(numberOfRequests):
+                for req_number in range(numberOfRequests):
 
                     if multipleRequests:
                         thisRequestLongitude = requestLongitude[req_number]
@@ -401,12 +390,12 @@ class GFS_Handler:
                     logger.debug('Requesting URL: %s' % requestURL)
 
                     try:
-                        HTTPresponse = urllib2.urlopen(requestURL)
+                        HTTPresponse = urlopen(requestURL)
                     except:
                         logger.error('Error while connecting to the GFS server.')
                         logger.error('URL: %s' % requestURL)
                         return False
-                    dataResults.append(HTTPresponse.read())
+                    dataResults.append(HTTPresponse.read().decode('utf-8'))
 
                     if dataResults[-1][0] == "<":
                         # Data from this cycle is not available. Try with the earlier one.
@@ -469,7 +458,7 @@ class GFS_Handler:
         # Store the current shape of the 4D matrices
         matrixShape = uWindsMatrix.shape
         # Convert to KNOTS and the turn into direction and speed
-        dirspeedWinds = map(tools.uv2dirspeed, (uWindsMatrix * 1.9438445).ravel(), (vWindsMatrix * 1.9438445).ravel())
+        dirspeedWinds = list(map(tools.uv2dirspeed, (uWindsMatrix * 1.9438445).ravel(), (vWindsMatrix * 1.9438445).ravel()))
         # Extract results
         windDirectionMatrix = numpy.array([dirspeed[0] for dirspeed in dirspeedWinds]).reshape(matrixShape)
         windSpeedMatrix = numpy.array([dirspeed[1] for dirspeed in dirspeedWinds]).reshape(matrixShape)
@@ -595,7 +584,6 @@ class GFS_Handler:
         # Run this either once or twice, according to how many datasets have been downloaded (Greenwich meridian
         # crossing.
         for dataStream in dataStreams:
-
             dataLines = dataStream.split('\n')
 
             # Count how many latitude, longitude, pressure and time points are available in the datastream.
@@ -636,19 +624,19 @@ class GFS_Handler:
 
             resultsMap.fwdLatitude = [float(lat) for lat in dataLines[-4].split(',')]
             resultsMap.revLatitude = {lat: ind for (lat, ind) in
-                                      zip(resultsMap.fwdLatitude, xrange(len(resultsMap.fwdLatitude)))}
+                                      zip(resultsMap.fwdLatitude, range(len(resultsMap.fwdLatitude)))}
 
             resultsMap.fwdLongitude = [float(lon) - 360 if float(lon) > 180 else float(lon) for lon in
                                        dataLines[-2].split(',')]
             resultsMap.revLongitude = {lon: ind for (lon, ind) in
-                                       zip(resultsMap.fwdLongitude, xrange(len(resultsMap.fwdLongitude)))}
+                                       zip(resultsMap.fwdLongitude, range(len(resultsMap.fwdLongitude)))}
 
             resultsMap.fwdPressure = [float(press) for press in dataLines[-6].split(',')]
             resultsMap.revPressure = {press: ind for (press, ind) in
-                                      zip(resultsMap.fwdPressure, xrange(len(resultsMap.fwdPressure)))}
+                                      zip(resultsMap.fwdPressure, range(len(resultsMap.fwdPressure)))}
 
             resultsMap.fwdTime = [float(time) for time in dataLines[-8].split(',')]
-            resultsMap.revTime = {time: ind for (time, ind) in zip(resultsMap.fwdTime, xrange(len(resultsMap.fwdTime)))}
+            resultsMap.revTime = {time: ind for (time, ind) in zip(resultsMap.fwdTime, range(len(resultsMap.fwdTime)))}
 
             overallResults.append(results)
             overallMaps.append(resultsMap)
@@ -813,29 +801,23 @@ class GFS_High_Altitude_Handler(GFS_Handler):
         self.latStep = 0.5
         self.lonStep = 0.5
 
-        # SETUP ERROR LOGGING AND DEBUGGING
-
-        logger = logging.getLogger('GFS_High_Alt')
 
         if debugging:
-            logger.setLevel(logging.DEBUG)
+            log_lev = logging.DEBUG
         else:
-            logger.setLevel(logging.WARNING)
+            log_lev = logging.WARNING
 
         if log_to_file:
-            log_handler = logging.FileHandler(filename='error.log')
-            log_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s')
-        else:
-            log_handler = logging.StreamHandler()
-            log_formatter = logging.Formatter('%(levelname)s - %(name)s - %(message)s')
+            logging.basicConfig(filename='error.log',
+                            filemode='a',
+                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt='%H:%M:%S',
+                            level=log_lev)
+        # else:
+        #     logger.setLevel(log_lev)
 
-        if debugging:
-            log_handler.setLevel(logging.DEBUG)
-        else:
-            log_handler.setLevel(logging.WARNING)
 
-        log_handler.setFormatter(log_formatter)
-        logger.addHandler(log_handler)
+
 
 
     def downloadForecast(self, progressHandler=None):
@@ -985,7 +967,7 @@ class GFS_High_Altitude_Handler(GFS_Handler):
                 dataResults = []
 
                 # Check if we need more than 1 request (ie if we are crossing the Greenwich meridian)
-                for req_number in xrange(numberOfRequests):
+                for req_number in range(numberOfRequests):
 
                     if multipleRequests:
                         thisRequestLongitude = requestLongitude[req_number]
@@ -1008,12 +990,12 @@ class GFS_High_Altitude_Handler(GFS_Handler):
                     logger.debug('Requesting URL: %s' % requestURL)
 
                     try:
-                        HTTPresponse = urllib2.urlopen(requestURL)
+                        HTTPresponse = urlopen(requestURL)
                     except:
                         logger.error('Error while connecting to the GFS server.')
                         logger.error('URL: %s' % requestURL)
                         return False
-                    dataResults.append(HTTPresponse.read())
+                    dataResults.append(HTTPresponse.read().decode('utf-8'))
 
                     if dataResults[-1][0] == "<":
                         # Data from this cycle is not available. Try with the earlier one.
@@ -1068,7 +1050,7 @@ class GFS_High_Altitude_Handler(GFS_Handler):
         # Store the current shape of the 4D matrices
         matrixShape = uWindsMatrix.shape
         # Convert to KNOTS and the turn into direction and speed
-        dirspeedWinds = map(tools.uv2dirspeed, (uWindsMatrix * 1.9438445).ravel(), (vWindsMatrix * 1.9438445).ravel())
+        dirspeedWinds = list(map(tools.uv2dirspeed, (uWindsMatrix * 1.9438445).ravel(), (vWindsMatrix * 1.9438445).ravel()))
         # Extract results
         windDirectionMatrix = numpy.array([dirspeed[0] for dirspeed in dirspeedWinds]).reshape(matrixShape)
         windSpeedMatrix = numpy.array([dirspeed[1] for dirspeed in dirspeedWinds]).reshape(matrixShape)
