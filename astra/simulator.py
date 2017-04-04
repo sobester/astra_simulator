@@ -291,102 +291,115 @@ class flight(object):
         else:
             logger.setLevel(log_lev)
 
-
-
     def run(self):
         """
-        This method takes all the necessary steps to run the simulation and wraps together all the simulation-specific
-        methods found below. This method is RECOMMENDED for standard users.
+        This method takes all the necessary steps to run the simulation and
+        wraps together all the simulation-specific methods found below. This
+        method is RECOMMENDED for standard users.
 
-        Returns 0 if the simulation succeeded, or the error number if there were errors. Check the error.log and the
-        simulator's documentation for a full description of the error(s).
+        Returns 0 if the simulation succeeded, or the error number if there
+        were errors. Check the error.log and the simulator's documentation for
+        a full description of the error(s).
         """
-
         # Prepare progress file: try and create the file
-        self._progressFile = os.path.splitext(self.outputFile)[0] + '_progress.json'
+        self._progressFile = os.path.splitext(self.outputFile)[0] +\
+            '_progress.json'
         self.updateProgress(1.0, 2)
         self._totalStepsForProgress = self.numberOfSimRuns + 1
 
-
-        # ________________________________________________________________________________________ #
+        # _________________________________________________________________ #
         # PREFLIGHT SEQUENCE
 
         self.preflight()
 
         if not self._preflightCompleted:
             # Check whether the preflight was completed successfully
-            logger.error('There was an error while performing the preflight validations and calculations.')
+            logger.error("""There was an error while performing the preflight
+                validations and calculations.""")
             logger.error('The simulation was interrupted.')
             return
         self.updateProgress(0.0, 0)
 
-        # ________________________________________________________________________________________ #
+        # _________________________________________________________________ #
         # RUN THE FLIGHT SIMULATION
         for flightNumber in range(self.numberOfSimRuns):
             logger.debug('SIMULATING FLIGHT %d' % (flightNumber + 1))
             self.fly(flightNumber)
-            self.updateProgress(float(flightNumber + 1) / self._totalStepsForProgress, 0)
+            self.updateProgress(
+                float(flightNumber + 1) / self._totalStepsForProgress, 0)
 
-
-        # ________________________________________________________________________________________ #
+        # _________________________________________________________________ #
         # POSTFLIGHT HOUSEKEEPING AND RESULT PROCESSING
-
-
         self._hasRun = True
         self.postflight()
         self.updateProgress(1.0, 0)
         return 0
 
-
     def preflight(self):
         """
-        Run a series of pre-flight checks and calculations to verify the consistency of the flight
-        parameters entered and to prepare all the data required for simulation.
+        Run a series of pre-flight checks and calculations to verify the
+        consistency of the flight parameters entered and to prepare all the
+        data required for simulation.
 
-        It is MANDATORY to execute this method before the simulation (otherwise the simulation will throw an error)
+        It is MANDATORY to execute this method before the simulation (otherwise
+        the simulation will throw an error)
 
-        If successful, no errors are thrown. Enable debugging for detailed information.
+        If successful, no errors are thrown. Enable debugging for detailed
+        information.
         """
 
         logger.debug('Preflight sequence starting...')
 
-
-        # ________________________________________________________________________________________ #
-        ## Fetch launch site information from the environment data
+        # _________________________________________________________________ #
+        # Fetch launch site information from the environment data
         self.launchSiteLat = self.environment.launchSiteLat
         self.launchSiteLon = self.environment.launchSiteLon
         self.launchSiteElev = self.environment.launchSiteElev
 
-        # ________________________________________________________________________________________ #
-        ## Variable validation
+        # _________________________________________________________________ #
+        # Variable validation
         toBreak = False
         if self.environment is None:
             logger.error('Flight environment not defined!')
             toBreak = True
-        if not self.environment._weatherLoaded and isinstance(self.environment, soundingEnvironment):
+
+        if not self.environment._weatherLoaded\
+           and isinstance(self.environment, soundingEnvironment):
             logger.error('Flight environment has not loaded weather data!')
             toBreak = True
-        if self.balloonGasType != 'Helium' and self.balloonGasType != 'Hydrogen':
-            logger.warning(
-                'Warning: An invalid gas type for this flight was found. The calculation will carry on with Helium.')
+
+        if self.balloonGasType not in ['Helium', 'Hydrogen']:
+            logger.warning('{} is an invalid gas type'.format(
+                self.balloonGasType))
+            logger.warning("The calculation will carry on with Helium.")
             self.balloonGasType = 'Helium'
-        if not self.balloonModel in available_balloons_parachutes.balloons.keys():
+
+        if self.balloonModel not in available_balloons_parachutes.balloons:
             logger.error(
-                'An invalid balloon model was found. Supported models are %s. Please correct it.', available_balloons_parachutes.balloons.keys())
+                '{} is an invalid balloon model'.format(self.balloonModel))
+            logger.error('Supported models are %s. Please correct it.',
+                         available_balloons_parachutes.balloons.keys())
             toBreak = True
-        if self.parachuteModel is not None and not self.parachuteModel in available_balloons_parachutes.parachutes.keys():
-            logger.error(
-                'An invalid parachute model was found. Supported models are None or %s. Please correct it.', available_balloons_parachutes.parachutes.keys())
+
+        if self.parachuteModel is not None and self.parachuteModel not in\
+           available_balloons_parachutes.parachutes:
+            logger.error('An invalid parachute model was found.')
+            logger.error('Supported models are None or %s. Please correct it.',
+                         available_balloons_parachutes.parachutes.keys())
             toBreak = True
+
         if self.nozzleLift == 0.0:
             logger.error('Nozzle lift cannot be zero!')
             toBreak = True
+
         if self.payloadTrainWeight == 0.0:
             logger.error('Payload train weight cannot be zero!')
             toBreak = True
+
         if self.numberOfSimRuns == 0:
             logger.error('The number of sim runs cannot be zero!')
             toBreak = True
+
         if self.launchSiteLat == 0.0 or self.launchSiteLon == 0.0:
             logger.warning('Warning: Are you sure you set the launch site location correctly?')
         # if self.trainEquivSphereDiam == 0.0:
@@ -420,22 +433,31 @@ class flight(object):
             logger.error('The simulation was interrupted.')
             return
 
-        logger.debug('Flight parameters validation succeeded. Beginning Preflight...')
+        logger.debug('Flight parameters validation succeeded.')
+        logger.debug('Beginning Preflight...')
 
-        # ________________________________________________________________________________________ #
-        ## Preflight calculations
+        # ____________________________________________________________ #
+        # Preflight calculations
 
         # Balloon performance estimation
-        # According to the balloon weight entered, select the related mean burst diameter and its Weibull coefficients.
-        self._balloonWeight = available_balloons_parachutes.balloons[self.balloonModel][0]
-        self._meanBurstDia = available_balloons_parachutes.meanToNominalBurstRatio * available_balloons_parachutes.balloons[self.balloonModel][1]
-        self._weibull_lambda = available_balloons_parachutes.balloons[self.balloonModel][2]
-        self._weibull_k = available_balloons_parachutes.balloons[self.balloonModel][3]
+        # According to the balloon weight entered, select the related mean
+        # burst diameter and its Weibull coefficients.
+        self._balloonWeight = \
+            available_balloons_parachutes.balloons[self.balloonModel][0]
+        self._meanBurstDia = (
+            available_balloons_parachutes.meanToNominalBurstRatio *
+            available_balloons_parachutes.balloons[self.balloonModel][1]
+        )
+        self._weibull_lambda = \
+            available_balloons_parachutes.balloons[self.balloonModel][2]
+        self._weibull_k = \
+            available_balloons_parachutes.balloons[self.balloonModel][3]
 
-        logger.debug('Balloon performance: Mean burst diameter: %.4f, Lambda: %.4f, k: %4f' % (
+        logger.debug("""Balloon performance: Mean burst diameter: %.4f,
+            Lambda: %.4f, k: %4f""" % (
             self._meanBurstDia, self._weibull_lambda, self._weibull_k))
 
-        # ________________________________________________________________________________________ #
+        # ____________________________________________________________ #
         # Variable initialization
 
         # Load the flight tools and prep them for simulation
@@ -455,9 +477,9 @@ class flight(object):
         else:
             self._usingGFS = False
 
-        # Initialize variables subject to perturbation for Monte Carlo simulations.
+        # Initialize variables subject to perturbation (Monte Carlo simulation)
         if self.numberOfSimRuns == 1:
-            # Deterministic simulation: use standard values, without perturbations
+            # Deterministic simulation: use standard values, no perturbations
             self._lowCD.append(0.225)
             self._highCD.append(0.425)
             self._transition.append(3.296)
@@ -468,76 +490,102 @@ class flight(object):
         else:
             # Monte Carlo simulation: perturb values
             for _ in range(self.numberOfSimRuns):
-                mcIndex = numpy.random.random_integers(0, (numpy.size(drag_helium.transitions[:, 0])) - 1)
+                mcIndex = numpy.random.random_integers(0, (
+                    numpy.size(drag_helium.transitions[:, 0])) - 1)
                 self._lowCD.append(drag_helium.transitions[mcIndex, 0])
                 self._highCD.append(drag_helium.transitions[mcIndex, 1])
                 self._transition.append(drag_helium.transitions[mcIndex, 2])
                 self._ReBand.append(drag_helium.transitions[mcIndex, 3])
-                self._balloonReturnFraction.append(0.03 + numpy.random.random() * (1 - 0.03))
-                self._parachuteCD.append(0.9 + 0.2 * numpy.random.random() * (-1)**round(numpy.random.random()))
-                self._burstDiameter.append(self._weibull_lambda * numpy.random.weibull(self._weibull_k))
+                self._balloonReturnFraction.append(
+                    0.03 + numpy.random.random() * (1 - 0.03))
+                self._parachuteCD.append(0.9 + 0.2 * numpy.random.random() *
+                                         (-1) ** round(numpy.random.random()))
+                self._burstDiameter.append(
+                    self._weibull_lambda *
+                    numpy.random.weibull(self._weibull_k))
                 # Perturb the wind for Monte Carlo.
             self.environment.perturbWind(self.numberOfSimRuns)
 
-
-        # ________________________________________________________________________________________ #
+        # _________________________________________________________________ #
         # Lifting gas mass calculations
         if self.balloonGasType == 'Helium':
-            self._gasMolecularMass = 0.945 * self.flightTools.HeMolecularMass + 0.055 * self.flightTools.airMolecularMass
+            self._gasMolecularMass = (
+                0.945 * self.flightTools.HeMolecularMass +
+                0.055 * self.flightTools.airMolecularMass
+            )
         else:
-            self._gasMolecularMass = 0.985 * self.flightTools.HydrogenMolecularMass + 0.015 * self.flightTools.airMolecularMass
+            self._gasMolecularMass = (
+                0.985 * self.flightTools.HydrogenMolecularMass +
+                0.015 * self.flightTools.airMolecularMass
+            )
 
-        # Use flight tools to calculate all preliminary balloon calculations (gas mass, balloon volume and diameter at
-        # inflation)
-        self._gasMassAtInflation, self._balloonVolumeAtInflation, self._balloonDiaAtInflation = self.flightTools.liftingGasMass(
-            self.nozzleLift,
-            self._balloonWeight,
-            self.environment.inflationTemperature,
-            self.environment.getPressure(self.launchSiteLat, self.launchSiteLon, self.launchSiteElev,
-                                         self.environment.dateAndTime),
-            self._gasMolecularMass,
-            self.excessPressureCoeff
+        # Use flight tools to calculate all preliminary balloon calculations
+        # (gas mass, balloon volume and diameter at inflation)
+        (self._gasMassAtInflation, self._balloonVolumeAtInflation,
+            self._balloonDiaAtInflation) = self.flightTools.liftingGasMass(
+                self.nozzleLift,
+                self._balloonWeight,
+                self.environment.inflationTemperature,
+                self.environment.getPressure(self.launchSiteLat,
+                                             self.launchSiteLon,
+                                             self.launchSiteElev,
+                                             self.environment.dateAndTime),
+                self._gasMolecularMass,
+                self.excessPressureCoeff
         )
 
         logger.debug('Lifting gas mass calcs completed!')
         logger.debug('Gas molecular mass: %.4f' % self._gasMolecularMass)
         logger.debug('Gas mass: %.4f' % self._gasMassAtInflation)
-        logger.debug('Balloon volume at inflation: %.4f' % self._balloonVolumeAtInflation)
-        logger.debug('Balloon diameter ad inflation: %.4f' % self._balloonDiaAtInflation)
+        logger.debug('Balloon volume at inflation: %.4f' %
+                     self._balloonVolumeAtInflation)
+        logger.debug('Balloon diameter ad inflation: %.4f' %
+                     self._balloonDiaAtInflation)
 
+        # In case it's a floating flight, calculate the gas mass and the
+        # balloon volume needed at the target altitude for the balloon to
+        # float.
 
-        # In case it's a floating flight, calculate the gas mass and the balloon volume needed at the target
-        # altitude for the balloon to float.
-
-        # WARNING: There is an approximation here, in case GFS is being used: this data is calculated as if the balloon
-        # were to float at the launch site, rather than at its true location.
-        # It can probably be fixed by continuously calculating these during flight simulation, but this would slow the
-        # whole simulation down.
+        # WARNING: There is an approximation here, in case GFS is being used:
+        # this data is calculated as if the balloon were to float at the launch
+        # site, rather than at its true location. It can probably be fixed by
+        # continuously calculating these during flight simulation, but this
+        # would slow the whole simulation down.
 
         if self.floatingFlight:
             # Calculate the balloon characteristics at the floating altitude
-            self._gasMassAtFloat, self._balloonVolumeAtFloat, self._balloonDiaAtFloat = self.flightTools.liftingGasMass(
-                self.payloadTrainWeight, # This is the Nozzle Lift, which has to be equal to the payload train weight
-                # for the balloon to float. If they are, the sum of the (vertical) forces is 0.
-                self._balloonWeight,
-                self.environment.getTemperature(self.launchSiteLat, self.launchSiteLon, self.floatingAltitude,
-                                                self.environment.dateAndTime),
-                self.environment.getPressure(self.launchSiteLat, self.launchSiteLon, self.floatingAltitude,
-                                             self.environment.dateAndTime),
-                self._gasMolecularMass,
-                self.excessPressureCoeff
+            (self._gasMassAtFloat, self._balloonVolumeAtFloat,
+                self._balloonDiaAtFloat) = self.flightTools.liftingGasMass(
+                    # This is the Nozzle Lift, which has to be equal to the
+                    # payload train weight for the balloon to float. If they
+                    # are, the sum of the (vertical) forces is 0.
+                    self.payloadTrainWeight,
+                    self._balloonWeight,
+                    self.environment.getTemperature(
+                        self.launchSiteLat,
+                        self.launchSiteLon,
+                        self.floatingAltitude,
+                        self.environment.dateAndTime),
+                    self.environment.getPressure(self.launchSiteLat,
+                                                 self.launchSiteLon,
+                                                 self.floatingAltitude,
+                                                 self.environment.dateAndTime),
+                    self._gasMolecularMass,
+                    self.excessPressureCoeff
             )
 
             logger.debug('Lifting gas mass calcs for floating:')
             logger.debug('Gas molecular mass: %.4f' % self._gasMolecularMass)
             logger.debug('Gas mass: %.4f' % self._gasMassAtFloat)
-            logger.debug('Balloon volume at floating alt: %.4f' % self._balloonVolumeAtFloat)
-            logger.debug('Balloon diameter ad floating alt: %.4f' % self._balloonDiaAtFloat)
-
+            logger.debug('Balloon volume at floating alt: %.4f' %
+                         self._balloonVolumeAtFloat)
+            logger.debug('Balloon diameter ad floating alt: %.4f' %
+                         self._balloonDiaAtFloat)
 
         # Configure the flight tools for the correct parachute
         if self.parachuteModel is not None:
-            self.flightTools.parachuteAref = available_balloons_parachutes.parachutes[self.parachuteModel]
+            self.flightTools.parachuteAref = \
+                available_balloons_parachutes.parachutes[self.parachuteModel]
         else:
             self.flightTools.parachuteAref = 0.0
 
@@ -545,20 +593,22 @@ class flight(object):
 
         logger.debug('Preflight completed!')
 
-
     def fly(self, flightNumber):
         """
         Execute a single simulation.
-        It should be run N times, where N is the number of simulation runs specified
-        upon configuration in the numberOfSimRuns variable.
+        It should be run N times, where N is the number of simulation runs
+        specified upon configuration in the numberOfSimRuns variable.
         flightNumber should have values 0...N-1
 
-        If successful, no errors are thrown. Enable debugging for detailed information.
+        If successful, no errors are thrown. Enable debugging for detailed
+        information.
         """
 
-        # Check whether the preflight sequence was performed. If not, stop the simulation.
+        # Check whether the preflight sequence was performed. If not, stop the
+        # simulation.
         if not self._preflightCompleted:
-            logger.error('Preflight sequence needs to be performed before the actual flight! Simulation interrupted.')
+            logger.error("""Preflight sequence needs to be performed before the
+                actual flight! Simulation interrupted.""")
             return
 
         # Flight-specific variables initialization
@@ -568,25 +618,32 @@ class flight(object):
         self.flightTools.ReBand = self._ReBand[flightNumber]
         self.flightTools.transition = self._transition[flightNumber]
         self.flightTools.parachuteCD = self._parachuteCD[flightNumber]
-        self._totalAscendingMass = self.payloadTrainWeight + self._gasMassAtInflation + self._balloonWeight
-        self._totalDescendingMass = self.payloadTrainWeight + self._balloonWeight * self._balloonReturnFraction[
-            flightNumber]
-        # Use the correct wind profile according to the simulation type: a standard one for deterministic simulations
-        # or a perturbed one for Monte Carlo simulations.
+        self._totalAscendingMass = (self.payloadTrainWeight +
+                                    self._gasMassAtInflation +
+                                    self._balloonWeight)
+        self._totalDescendingMass = (self.payloadTrainWeight +
+            self._balloonWeight * self._balloonReturnFraction[flightNumber])
+        # Use the correct wind profile according to the simulation type: a
+        # standard one for deterministic simulations or a perturbed one for
+        # Monte Carlo simulations.
         if self.numberOfSimRuns == 1:
             currentFlightWindDirection = self.environment.getWindDirection
             currentFlightWindSpeed = self.environment.getWindSpeed
         else:
-            currentFlightWindDirection = self.environment.getMCWindDirection[flightNumber]
-            currentFlightWindSpeed = self.environment.getMCWindSpeed[flightNumber]
+            currentFlightWindDirection =\
+                self.environment.getMCWindDirection[flightNumber]
+            currentFlightWindSpeed = \
+                self.environment.getMCWindSpeed[flightNumber]
 
         logger.debug('Flight variables initialized.')
         logger.debug('Low CD: %.4f' % self.flightTools.lowCD)
         logger.debug('High CD: %.4f' % self.flightTools.highCD)
         logger.debug('Transition: %.4f' % self.flightTools.transition)
         logger.debug('Re Band: %.4f' % self.flightTools.ReBand)
-        logger.debug('Burst Diameter: %.4f' % self._burstDiameter[flightNumber])
-        logger.debug('Balloon Return Fraction: %.4f' % self._balloonReturnFraction[flightNumber])
+        logger.debug('Burst Diameter: %.4f' %
+                     self._burstDiameter[flightNumber])
+        logger.debug('Balloon Return Fraction: %.4f' %
+                     self._balloonReturnFraction[flightNumber])
         logger.debug('Parachute CD: %.4f' % self.flightTools.parachuteCD)
 
         logger.debug('Total ascending mass: %.4f' % self._totalAscendingMass)
@@ -606,7 +663,8 @@ class flight(object):
 
         def ode(y, t):
             """
-            This is the right-hand side of the 2nd order ODE defining the vertical motion of the balloon.
+            This is the right-hand side of the 2nd order ODE defining the
+            vertical motion of the balloon.
             """
             self._totalRuns += 1
             # Extract inputs from array y
@@ -623,19 +681,27 @@ class flight(object):
                     return numpy.array([0.0, 0.0])
 
             # Calculate current position in time and space
-            # This is used to fetch the correct atmospheric data if the GFS is being used.
+            # This is used to fetch the correct atmospheric data if the GFS is
+            # being used.
             currentTime = self.environment.dateAndTime + timedelta(seconds=t)
 
             # Convert wind direction and speed to u- and v-coordinates
             windLon, windLat = tools.dirspeed2uv(
-                currentFlightWindDirection(self._currentLatPosition, self._currentLonPosition, altitude, currentTime),
-                currentFlightWindSpeed(self._currentLatPosition, self._currentLonPosition, altitude,
+                currentFlightWindDirection(self._currentLatPosition,
+                                           self._currentLonPosition,
+                                           altitude,
+                                           currentTime),
+                currentFlightWindSpeed(self._currentLatPosition,
+                                       self._currentLonPosition,
+                                       altitude,
                                        currentTime) * 0.514444
             )
 
-            # Calculate how much the drift has been from the previous to the current iteration, convert it to degrees
-            # and add it up to the previous lat,lon position to find the current one.
-            dLat, dLon = tools.m2deg(windLat * (t - self._currentTime), windLon * (t - self._currentTime),
+            # Calculate how much the drift has been from the previous to the
+            # current iteration, convert it to degrees and add it up to the
+            # previous lat,lon position to find the current one.
+            dLat, dLon = tools.m2deg(windLat * (t - self._currentTime),
+                                     windLon * (t - self._currentTime),
                                      self._currentLatPosition)
             self._currentLatPosition += dLat
             self._currentLonPosition += dLon
@@ -651,14 +717,16 @@ class flight(object):
             elif self._currentLonPosition <= -180:
                 self._currentLonPosition += 360
 
-            # Update the current time, to be used in the next iteration to work out the time difference.
+            # Update the current time, to be used in the next iteration to work
+            # out the time difference.
             self._currentTime = t
 
             if not self._lastFlightBurst:
                 # THE BALLOON IS CURRENTLY ASCENDING
 
-                # If floating flight, check whether the balloon is approaching the target altitude to start venting
-                # gas out. The altitude at which venting starts is floatingAltitude - ventingStart.
+                # If floating flight, check whether the balloon is approaching
+                # the target altitude to start venting gas out. The altitude at
+                # which venting starts is floatingAltitude - ventingStart.
                 if self.floatingFlight:
                     gasMass = self.flightTools.gasMassForFloat(
                         altitude,
@@ -853,7 +921,6 @@ class flight(object):
                  self.floatingAltitude, False])
 
         logger.debug('Simulation completed.')
-
 
     def postflight(self):
         """
@@ -1250,7 +1317,6 @@ class flight(object):
             self._preflightCompleted = False
         else:
             self.__init__()
-
 
     def updateProgress(self, value, action):
         """
