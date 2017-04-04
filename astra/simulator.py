@@ -291,6 +291,7 @@ class flight(object):
         else:
             logger.setLevel(log_lev)
 
+    @profile
     def run(self):
         """
         This method takes all the necessary steps to run the simulation and
@@ -335,6 +336,7 @@ class flight(object):
         self.updateProgress(1.0, 0)
         return 0
 
+    @profile
     def preflight(self):
         """
         Run a series of pre-flight checks and calculations to verify the
@@ -593,6 +595,7 @@ class flight(object):
 
         logger.debug('Preflight completed!')
 
+    @profile
     def fly(self, flightNumber):
         """
         Execute a single simulation.
@@ -922,6 +925,7 @@ class flight(object):
 
         logger.debug('Simulation completed.')
 
+    @profile
     def postflight(self):
         """
         After all the simulations have been executed, this method puts the results together, processes them and stores
@@ -1318,6 +1322,7 @@ class flight(object):
         else:
             self.__init__()
 
+    @profile
     def updateProgress(self, value, action):
         """
         Update the progress file with the ratio of value and the total steps of the simulation calculated when
