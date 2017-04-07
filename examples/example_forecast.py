@@ -48,7 +48,7 @@ if __name__ == "__main__":
     simFlight.floatingAltitude = 30000                      # m
     simFlight.excessPressureCoeff = 1
     #simFlight.maxFlightTime = 5*60*60
-    simFlight.outputFile = '/home/pchambers/Documents/ASTRA2017/astra_output'
+    simFlight.outputFile = '/home/pchambers/Documents/PhD/placement/ASTRA2017/astra_output'
 
 
     # Run the simulation
