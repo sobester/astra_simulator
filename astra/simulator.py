@@ -192,7 +192,6 @@ An advanced usage of the Simulator could be as follows:
 
 
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 from math import pi
 from datetime import timedelta
@@ -206,6 +205,13 @@ from .flight_tools import flight_tools
 from .weather import *
 from . import drag_helium
 from . import available_balloons_parachutes
+from six.moves import builtins
+
+# Pass through the @profile decorator if line profiler (kernprof) is not in use
+try:
+    builtins.profile
+except AttributeError:
+    def profile(func): return func
 
 # Error and warning logger
 logger = logging.getLogger(__name__)

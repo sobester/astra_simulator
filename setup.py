@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2016-11-17 17:34:50
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2016-11-18 11:51:25
+# @Last Modified time: 2017-04-11 14:45:25
 from setuptools import setup, find_packages
 import subprocess
 
@@ -20,6 +20,7 @@ setup(
     description='Scripted Aircraft Geometry Module based on Python-OCC',
     packages=find_packages(),
     include_package_data=True,
+    scripts=['bin/astra-sim'],
     # package_data={'': ['*.dat']},
     install_requires=["numpy", "scipy"],
     author='Niccolo Zapponi, Paul Chambers',

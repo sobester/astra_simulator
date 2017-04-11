@@ -1117,7 +1117,7 @@ class GFS_Map:
 
         if self.revLatitude == data_map.revLatitude and self.revPressure == data_map.revPressure and self.revTime == data_map.revTime:
             # Join
-            self.revLongitude.update({key: value + lonLen for (key, value) in data_map.revLongitude.iteritems()})
+            self.revLongitude.update({key: value + lonLen for (key, value) in data_map.revLongitude.items()})
 
         else:
             logger.error("Map joining failed. Latitudes, Pressures and/or Times don't match between the two maps!")
@@ -1136,7 +1136,7 @@ class GFS_Map:
             logger.error("Map joining failed. Latitudes, Pressures and/or Times don't match between the two maps!")
 
         if self.revLatitude == data_map.revLatitude and self.revPressure == data_map.revPressure and self.revTime == data_map.revTime:
-            self.revLongitude = {key: value + lonLen for (key, value) in self.revLongitude.iteritems()}.update(
+            self.revLongitude = {key: value + lonLen for (key, value) in self.revLongitude.items()}.update(
                 data_map.revLongitude)
         else:
             logger.error("Map joining failed. Latitudes, Pressures and/or Times don't match between the two maps!")
