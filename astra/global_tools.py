@@ -1,148 +1,9 @@
 # coding=utf-8
 
 """
-global_tools.py
-ASTRA High Altitude Balloon Flight Planner
-
-DESCRIPTION
---------------
-
-Global Tools
-A collection of small global tools.
-These tools generally perform basic unit conversions, provide simple data and analyze lists.
-
-
-USAGE
---------------
-
-The functions available are:
-
-    feet2m(length)
-        Convert a length in feet to meters.
-        Returns a float with the length [m]
-
-        Parameters:
-            length: length in feet to be converted
-
-    m2feet(length)
-        Convert a length in meters to feet.
-        Returns a float with the length [ft]
-
-        Parameters:
-            length: length in meters to be converted
-
-    kel2c(temperature)
-        Convert a temperature in Kelvin to degrees Celsius.
-        Returns a float with the temperature [degC]
-
-        Parameters:
-            temperature: temperature in Kelvin to be converted
-
-    c2kel(temperature)
-        Convert a temperature in degrees Celsius to Kelvin.
-        Returns a float with the temperature [K]
-
-        Parameters:
-            temperature: temperature in Celsius to be converted
-
-    pa2mbar(pressure)
-        Convert a pressure in Pascal to millibar
-        Returns a float with the pressure [mbar]
-
-        Parameters:
-            pressure: pressure in Pa to be converted
-
-    dirspeed2uv(windDirection,windSpeed,resultType=None)
-        Convert wind direction and speed to u and v components [same units as windSpeed].
-        If resultType is 'u', this function returns only the u component.
-        If resultType is 'v', this function returns only the v component.
-        If resultType is None, both u and v components are returned
-
-        Parameters:
-            windDirection: direction of the wind in degrees clockwise from the north. Direction indicates where the
-                           wind is blowing FROM.
-            windSpeed: speed of the wind [any units]
-            resultType: 'u'|'v'|None, see above.
-
-    uv2dirspeed(u,v)
-        Convert u and v wind components to wind direction and speed.
-        Returns a list: [windDirection, windSpeed], where wind direction is in degrees clockwise from the north,
-        wind speed has same units as u and v components.
-
-        Parameters:
-           u: wind's u-component [any units]
-           v: wind's v-component [any units]
-
-    m2deg(dLat,dLon,latitude)
-        Converts meters to degrees of latitude and longitude.
-        Returns a list: [deltaLat, deltaLon], both in degrees. Sign convention: deltaLat positive to the north,
-        deltaLon positive to the west.
-
-        Parameters:
-           dLat: distance in the direction of meridians [m]. Sign convention: positive to the north
-           dLon: distance in the direction of parallels [m]. Sign convention: positive to the east
-           latitude: current latitude [deg], used to calculate the distance between meridians.
-
-    deg2m(degLat,degLon,latitude)
-        Convert degrees of latitude and longitude to meters.
-        Returns a list: [dLat,dLon], both in meters, representing the distance in the direction of the meridians and of
-        the parallels respectively.
-
-        Parameters:
-            degLat: distance in degrees of latitude
-            degLon: distance in degrees of longitude
-            latitude: current latitude [deg], used to calculate the distance between meridians.
-
-    prettySeconds(seconds)
-        Convert seconds in hours, minutes and seconds.
-        Returns a list: [hours, minutes, seconds]
-
-        Parameters:
-            seconds: number of seconds to be converted
-
-    getUTCOffset(latitude, longitude, timestamp)
-        Use the Google Maps API Time Zone service to obtain UTC offset information about
-        the given location.
-        Returns a string in the format '+HHMM'
-
-        Parameters:
-            latitude: latitude of the location
-            longitude: longitude of the location
-            date_time: datetime object
-
-    find_nearest_index(array,value)
-        Find the index of the entry in the array which is nearest to value.
-        Returns an integer with the index.
-
-        Parameters:
-            array: a 1D numpy array of values
-            value: the target value
-
-    ISAatmosphere(altitude=None,temperature=None,density=None,pressure=None,speedOfSound=None)
-        Return ISA atmospheric conditions for the input parameters given.
-        Returns a list: [altitude,temperature,density,pressure,speedOfSound], with altitude [m], temperature [degC],
-        density [kg/m3], pressure [mbar], speedOfSound [m/s].
-
-        Parameters:
-            (Note: Either the altitude or the temperature MUST be given!)
-
-            altitude: [m]
-            temperature: [degC]
-            density: [kg/m3]
-            pressure: [mbar]
-            speedOfSound: [m/s]
-
-        Note: if only the temperature is given as an argument and this is higher than 489.8 degrees Celsius, two
-        possible ISA solutions exist. In this case, the function will return a list as follows:
-        [[altitude0, altitude1],temperature,[density0,density1],[pressure0,pressure1],[speedOfSound0, speedOfSound1]].
-
-
-University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
+These tools generally perform basic unit conversions, provide simple data and
+analyze lists.
 """
-
-__author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
-
 from math import sqrt, exp, sin, cos, radians, atan, atan2, tan, pi
 import numpy
 import logging
@@ -155,78 +16,49 @@ logger = logging.getLogger(__name__)
 
 
 def feet2m(lengthFeet):
-    """
-    feet2m(length)
-        Convert a length in feet to meters.
-        Returns a float with the length [m]
-
-        Parameters:
-            length: length in feet to be converted
-    """
+    """Convert a length in feet to meters."""
     return lengthFeet * 0.3048
 
 
 def m2feet(lengthM):
-    """
-    m2feet(length)
-        Convert a length in meters to feet.
-        Returns a float with the length [ft]
-
-        Parameters:
-            length: length in meters to be converted
+    """Convert a length in meters to feet.
     """
     return lengthM / 0.3048
 
 
 def kel2c(tempK):
-    """
-    kel2c(temperature)
-        Convert a temperature in Kelvin to degrees Celsius.
-        Returns a float with the temperature [degC]
-
-        Parameters:
-            temperature: temperature in Kelvin to be converted
-    """
+    """Convert a temperature in Kelvin to degrees Celsius."""
     return tempK - 273.15
 
 
 def c2kel(tempC):
-    """
-    c2kel(temperature)
-        Convert a temperature in degrees Celsius to Kelvin.
-        Returns a float with the temperature [K]
-
-        Parameters:
-            temperature: temperature in Celsius to be converted
-    """
+    """Convert a temperature in degrees Celsius to Kelvin."""
     return tempC + 273.15
 
 
 def pa2mbar(pressPa):
-    """
-    pa2mbar(pressure)
-        Convert a pressure in Pascal to millibar
-        Returns a float with the pressure [mbar]
-
-        Parameters:
-            pressure: pressure in Pa to be converted
-    """
+    """Convert a pressure in Pascal to millibar"""
     return pressPa * 0.01
 
 
 def dirspeed2uv(windDirection, windSpeed, resultType=None):
-    """
-    dirspeed2uv(windDirection,windSpeed,resultType=None)
-        Convert wind direction and speed to u and v components [same units as windSpeed].
-        If resultType is 'u', this function returns only the u component.
-        If resultType is 'v', this function returns only the v component.
-        If resultType is None, both u and v components are returned
+    """Convert wind direction and speed to u and v components
 
-        Parameters:
-            windDirection: direction of the wind in degrees clockwise from the north. Direction indicates where the
-                           wind is blowing FROM.
-            windSpeed: speed of the wind [any units]
-            resultType: 'u'|'v'|None, see above.
+    Parameters
+    ----------
+    windDirection : scalar
+        Direction FROM which the wind is blowing in degrees (clockwise 
+        from the north).
+    windSpeed: speed of the wind [any units]
+    resultType: optional, default None
+        'u' : returns only the u component
+        'v' : returns only the v component
+        None : returns (u, v]) component
+
+    Returns
+    -------
+    components : See resultType input
+        wind component(s) in same units as input
     """
     v = -windSpeed * cos(radians(windDirection))
     u = -windSpeed * sin(radians(windDirection))
@@ -238,21 +70,24 @@ def dirspeed2uv(windDirection, windSpeed, resultType=None):
     elif resultType == 'uv' or resultType is None:
         return u, v
     else:
-        logger.error('Unexpected argument format for resultType. Please refer to documentation.')
+        raise TypeError(
+            '{} is not a supported resultType. Please refer to documentation.').format
 
 
 def uv2dirspeed(u, v):
-    """
-    uv2dirspeed(u,v)
-        Convert u and v wind components to wind direction and speed.
-        Returns a list: [windDirection, windSpeed], where wind direction is in degrees clockwise from the north,
-        wind speed has same units as u and v components.
+    """Convert u and v wind components to wind direction and speed.
 
-        Parameters:
-           u: wind's u-component [any units]
-           v: wind's v-component [any units]
-    """
+    Parameters
+    ----------
+           u : wind's u-component [any units]
+           v : wind's v-component [any units]
 
+    Returns
+    -------
+    windDirection, windSpeed : (float, float)
+        windDirection is in degrees clockwise from the north. windSpeed has
+        the same units as input u and v.
+    """
     windSpeed = sqrt(u ** 2 + v ** 2)
     windDirDeg = (180 / pi) * atan2(-u, -v)
     if windDirDeg < 0:
@@ -262,16 +97,23 @@ def uv2dirspeed(u, v):
 
 
 def m2deg(dLat, dLon, latitude):
-    """
-    m2deg(dLat,dLon,latitude)
-        Converts meters to degrees of latitude and longitude.
-        Returns a list: [deltaLat, deltaLon], both in degrees. Sign convention: deltaLat positive to the north,
+    """Converts meters to degrees of latitude and longitude.
+    
+    Parameters
+    ----------
+    dLat : float
+        distance in the direction of meridians [m]. Positive to the north
+    dLon : float
+        distance in the direction of parallels [m]. Positive to the east
+    latitude: float
+        current latitude [deg], used to calculate the distance between
+        meridians.
+    
+    Returns
+    -------
+    deltaLat, deltaLon : (float, float)
+        both in degrees. Sign convention: deltaLat positive to the north,
         deltaLon positive to the west.
-
-        Parameters:
-           dLat: distance in the direction of meridians [m]. Sign convention: positive to the north
-           dLon: distance in the direction of parallels [m]. Sign convention: positive to the east
-           latitude: current latitude [deg], used to calculate the distance between meridians.
     """
 
     # Equatorial radius
@@ -286,18 +128,21 @@ def m2deg(dLat, dLon, latitude):
 
 
 def deg2m(degLat, degLon, latitude):
-    """
-    deg2m(degLat,degLon,latitude)
-        Convert degrees of latitude and longitude to meters.
-        Returns a list: [dLat,dLon], both in meters, representing the distance in the direction of the meridians and of
-        the parallels respectively.
+    """Convert degrees of latitude and longitude to meters.
 
-        Parameters:
-            degLat: distance in degrees of latitude
-            degLon: distance in degrees of longitude
-            latitude: current latitude [deg], used to calculate the distance between meridians.
+    Parameters
+    ----------
+    degLat: distance in degrees of latitude
+    degLon: distance in degrees of longitude
+    latitude: current latitude [deg], used to calculate the distance between
+        meridians.
+    
+    Returns
+    -------
+    dLat, dLon : (float, float)
+        both in meters, representing the distance in the direction of the
+        meridians and of the parallels respectively.
     """
-
     # Equatorial radius
     R = 6378137 #[m]
 
@@ -314,13 +159,11 @@ def deg2m(degLat, degLon, latitude):
 
 
 def prettySeconds(seconds):
-    """
-    prettySeconds(seconds)
-        Convert seconds in hours, minutes and seconds.
-        Returns a list: [hours, minutes, seconds]
+    """Convert seconds in hours, minutes and seconds.
 
-        Parameters:
-            seconds: number of seconds to be converted
+    Returns
+    ------- 
+    hours, minutes, seconds : (float, float, float)
     """
 
     is_negative = seconds < 0
@@ -341,30 +184,36 @@ def prettySeconds(seconds):
 
 
 def find_nearest_index(array, value):
-    """
-    find_nearest_index(array,value)
-        Find the index of the entry in the array which is nearest to value.
-        Returns an integer with the index.
+    """Find the index of the entry in the array which is nearest to value.
+    
+    Parameters
+    ----------
+    array : numpy array (1 x N)
+    value : the target value
 
-        Parameters:
-            array: a 1D numpy array of values
-            value: the target value
+    Returns
+    -------
+    idx : int (the index)
     """
 
     return numpy.abs(array - value).argmin()
 
 
 def getUTCOffset(latitude, longitude, date_time):
-    """
-    getUTCOffset(latitude, longitude, timestamp)
-        Use the Google Maps API Time Zone service to obtain UTC offset information about
-        the given location.
-        Returns a float with the UTC offset in hours
-
-        Parameters:
-            latitude: latitude of the location
-            longitude: longitude of the location
-            date_time: datetime object
+    """Use the Google Maps API Time Zone service to obtain UTC offset
+    information about the given location.
+ 
+    Parameters
+    ----------
+    latitude : scalar
+        latitude of the location
+    longitude : scalar
+        longitude of the location
+    date_time : :obj:`datetime.datetime`   
+    Returns
+    -------
+    UTCOffset : float
+        UTC offset in hours
     """
     timestamp = time.mktime(date_time.timetuple())
 
@@ -388,29 +237,37 @@ def getUTCOffset(latitude, longitude, date_time):
         return 0
 
 
-def ISAatmosphere(altitude=None, temperature=None, density=None, pressure=None, speedOfSound=None):
+def ISAatmosphere(altitude=None, temperature=None, density=None, pressure=None,
+        speedOfSound=None):
+    """Return ISA atmospheric conditions for the input parameters given.
+
+    Parameters
+    ----------
+        (Note: Either the altitude or the temperature MUST be given!)
+
+    altitude : [ft]
+        Either this or temperature must be given
+    temperature : [degC]
+        Either this or altitude. Input value may cause multiple solutions in
+        return values: see Notes.
+    density : [kg/m3]
+    pressure : [mbar]
+    speedOfSound : [m/s]
+
+    Returns
+    -------
+    (altitude,temperature,density,pressure,speedOfSound) : tuple
+        altitude [ft], temperature [degC], density [kg/m3], pressure [mbar],
+        speedOfSound [m/s]. If only the temperature is provided and is higher
+        than 489.8 degrees Celsius, two possible ISA solutions exist. In this
+        case, the function will return:
+        [[altitude0, altitude1],
+          temperature,
+         [density0,density1],
+         [pressure0,pressure1],
+         [speedOfSound0, speedOfSound1]].
     """
-    ISAatmosphere(altitude=None,temperature=None,density=None,pressure=None,speedOfSound=None)
-        Return ISA atmospheric conditions for the input parameters given.
-        Returns a list: [altitude,temperature,density,pressure,speedOfSound], with altitude [ft], temperature [degC],
-        density [kg/m3], pressure [mbar], speedOfSound [m/s].
-
-        Parameters:
-            (Note: Either the altitude or the temperature MUST be given!)
-
-            altitude: [ft]
-            temperature: [degC]
-            density: [kg/m3]
-            pressure: [mbar]
-            speedOfSound: [m/s]
-
-        Note: if only the temperature is given as an argument and this is higher than 489.8 degrees Celsius, two
-        possible ISA solutions exist. In this case, the function will return a list as follows:
-        [[altitude0, altitude1],temperature,[density0,density1],[pressure0,pressure1],[speedOfSound0, speedOfSound1]].
-    """
-
     # Constants
-
     # Level limits
     Level1 = 11000 # m
     Level2 = 20000 # m

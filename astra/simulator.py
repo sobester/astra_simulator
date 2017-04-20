@@ -1,195 +1,12 @@
 # coding=utf-8
 
 """
-simulator.py
-ASTRA High Altitude Balloon Flight Planner
+This module contains classes for primary flight simulation and the processing
+of results.
 
-DESCRIPTION
---------------
-
-Simulator Module
-This module is responsible for the whole flight simulation and the processing of results.
-With all the flight parameters, the flight class defines the framework of operations necessary to accomplish
-the balloon flight simulation.
-
-Note: This should be the first and only module manually imported by the user. All the other necessary modules are
-automatically imported by the simulator as needed.
-
-
-USAGE
---------------
-
-Instantiate a new flight object to deal with the whole simulation.
-When a new flight object is instantiated, it is empty and needs to be configured before running the simulation.
-This includes providing the object with all the flight parameters and environmental data required for the flight
-simulation to run.
-
-Upon instantiation, the following three optional parameters can be passed to the object:
-    debugging           (type: bool)
-    log_to_file         (type: bool)
-    progress_to_file    (type: bool)
-These parameters are used to configure the debugging and error logging system as well as the progress updater.
-By default, they are all False, which means that errors and progress information are displayed on the terminal or
-command line. See the NOTE below for more information.
-
-The standard syntax to instantiate and initialize a flight object is as follows:
-
-    import simulator
-    my_flight_simulation = simulator.flight()
-
-Once the object is initialized, the flight can be configured.
-The following parameters of the flight object need to be defined (parameters in [brackets] are optional):
-    environment         an environment object (either soundingEnvironment or forecastEnvironment) already configured
-        with the environmental model. See the Weather Module for more information.
-    balloonGasType      'Helium'|'Hydrogen' (type: string)
-    balloonModel        model of the balloon. Accepted values can be found in available_balloons_parachutes.py. (type: string)
-    nozzleLift          nozzle lift in kg (type: float)
-    payloadTrainWeight  weight of the payload train in kg (type: float)
-    parachuteModel      model of the parachute. Accepted values can be found in available_balloons_parachutes.py. (type: string)
-    trainEquivSphereDiam  the diameter (in meters) of sphere that generates the same drag as the train (type: float)
-    numberOfSimRuns     total number of simulations to be run. If 1, a deterministic simulation is run. If >1,
-        Monte Carlo perturbations are applied to each simulation (type: int)
-    [excessPressureCoeff] the coefficient of excess pressure of the balloon on the gas inside. Default is 1. Currently
-        not implemented (type: float)
-    [floatingFlight]    TRUE if the balloon is going to vent air and float rather than burst. Default is FALSE (type: bool)
-    [floatingAltitude]  the target altitude for the balloon to float, in meters. Ignored if floatingFlight is FALSE
-        (type: float)
-    [ventingStart]      how many meters below the target floating altitude should the venting start. Ignored if
-        floatingFlight is FALSE. Default is 1000m (type: float)
-    [maxFlightTime]     what is the maximum duration, in seconds, of a flight to be simulated. Warning: setting a high
-        maxFlightTime during a floatingFlight could take a long time to simulate! Default is 14400 seconds (4 hours)
-        (type: int)
-    outputFile          the path of the output file containing all the simulation data. See NOTE for available formats.
-        (type: string)
-
-After all the flight parameters have been entered, the simulation is ready to be performed.
-
-To simply run the simulation, the run() method can be used.
-The standard syntax is as follows:
-
-    my_flight_simulation.run()
-
-The run() method takes all the necessary steps to run the simulation and wraps together all the simulation-specific
-methods found below. For standard users, the use of the run() method is RECOMMENDED.
-This method returns 0 if the simulation succeeded. If there were any errors, they will be displayed depending on how the
-logging system has been set up. By default, they will be displayed on the terminal or command line.
-See the NOTE for debugging and progress for more information.
-
-For advanced users, the simulation can be performed using more specific methods.
-
-These are the available methods to control the simulation:
-    preflight()
-        This runs a series of pre-flight checks and calculations to verify the consistency of the flight
-        parameters entered and to prepare all the data required for simulation. It's MANDATORY to execute this method
-        before the simulation (otherwise the simulation will throw an error)
-        If successful, no errors are thrown. Enable debugging for detailed information.
-    fly(flightNumber)
-        This executes a single simulation. It should be run N times, where N is the number of simulation runs specified
-        upon configuration in the numberOfSimRuns variable. flightNumber should have values 0...N-1
-        If successful, no errors are thrown. Enable debugging for detailed information.
-    postflight(outputFormat)
-        After all the simulations have been executed, this method puts the results together, processes them and stores
-        them in the outputFormat required. See NOTE for output formats.
-    reset(keepParameters=False)
-        This method resets the simulation. If keepParameters is FALSE, all the parameters are deleted and the flight
-        object is ready to be reconfigured. If keepParameters is TRUE, all the results are deleted but the initial flight
-        configuration is preserved. preflight() should still be run again before performing anymore simulations.
-        Default is FALSE.
-    updateProgress(value,action)
-        This updates the progress file with both the value entered and the action being performed. See NOTE for debugging
-        and progress (value types: value:float,action:int)
-
-
-NOTE: AVAILABLE OUTPUT FORMATS
---------------
-
-The format of the file to be generated depends on the extension of the file passed in the outputFile.
-Accepted extensions are:
-    'json'    JavaScript data structure, used to provide data to the web interface;
-    'kml'     Standard format for geographical data. It can be opened by Google Maps, Google Earth, etc;
-    'kmz'     Zipped kml, good for online use (eg Google Maps). The file size is significantly reduced;
-    'csv'     Comma separated values, the preferred format for further data processing with any other software;
-    'csv.zip' Zipped csv file;
-    'web'     This stores json, kml and csv.zip in the same folder requested. This is used by the web interface to
-              prepare files for export.
-    none      If no extension is found, a new folder is created and ALL output formats are stored.
-
-
-NOTE: DEBUGGING SYSTEM AND PROGRESS UPDATER
---------------
-
-Both the debugging system and the progress updater are very easy to setup and use.
-For the debugging system, here is how to do it:
-When initializing the flight object, two optional boolean parameters can be passed:
-    debugging,
-    log_to_file.
-
-If debugging is set to TRUE, all the information regarding the simulation will be logged. If it's set to FALSE, only
-errors will be logged.
-log_to_file determines the location where the errors and debug messages will be logged. If TRUE, an error.log file will
-be created in your current folder and everything will go in there (make sure you have permissions to write in the
-current folder, or the simulator will not work!)
-If it's FALSE, all the errors and debug messages will be displayed on the terminal or command line.
-
-The progress updater works pretty much in the same way: there is an optional boolean parameter than can be passed upon
-initialization of the flight object:
-    progress_to_file.
-
-If TRUE, a progress .json file will be created in the current folder and will be constantly updated.
-If FALSE, progress information about the simulation will be displayed on the terminal or command line.
-
-By default, all the three optional parameters are set to FALSE.
-
-
-EXAMPLES
---------------
-
-A typical usage of the Simulator would be as follows (see the Weather Module documentation to setup the
-environment object):
-
-    import simulator
-    my_flight_simulation = simulator.flight()
-
-    my_flight_simulation.environment = my_environment_object
-    my_flight_simulation.balloonGasType = 'Helium'
-    my_flight_simulation.balloonModel = 'TA800'
-    my_flight_simulation.nozzleLift = 1.1
-    my_flight_simulation.payloadTrainWeight = 0.43
-    my_flight_simulation.parachuteModel = 'SPH36'
-    my_flight_simulation.trainEquivSphereDiam = 0.1
-    my_flight_simulation.numberOfSimRuns = 10
-    my_flight_simulation.floatingFlight = True
-    my_flight_simulation.floatingAltitude = 28000
-    my_flight_simulation.ventingStart = 500
-    my_flight_simulation.outputFile = 'output.csv'
-
-    my_flight_simulation.run()
-
-
-An advanced usage of the Simulator could be as follows:
-
-    import simulator
-    my_flight_simulation = simulator.flight()
-
-    my_flight_simulation.environment = my_environment_object
-    my_flight_simulation.balloonGasType = 'Helium'
-    my_flight_simulation.balloonModel = 'TA800'
-    my_flight_simulation.nozzleLift = 1.1
-    my_flight_simulation.payloadTrainWeight = 0.43
-    my_flight_simulation.parachuteModel = 'SPH36'
-    my_flight_simulation.trainEquivSphereDiam = 0.1
-    my_flight_simulation.numberOfSimRuns = 10
-    my_flight_simulation.floatingFlight = True
-    my_flight_simulation.floatingAltitude = 28000
-    my_flight_simulation.ventingStart = 500
-    my_flight_simulation.outputFile = 'output.csv'
-
-    my_flight_simulation.preflight()
-    for flightSimulation in range(10):
-        my_flight_simulation.fly(flightSimulation)
-        # extract any results or data from the simulation at this point
-    my_flight_simulation.postflight()
-
+With all the flight parameters, the flight class defines the framework of
+operations necessary to accomplish the balloon flight simulation. See examples
+for usage.
 
 University of Southampton
 """
@@ -198,58 +15,159 @@ from datetime import timedelta
 from sys import stdout
 import os
 import logging
-from six.moves import range
+from six.moves import range, builtins
 import numpy
 from scipy.integrate import odeint
-from .flight_tools import flight_tools
-from .weather import *
+from . import flight_tools as ft
+from .weather import forecastEnvironment, soundingEnvironment
+from . import global_tools as tools
 from . import drag_helium
 from . import available_balloons_parachutes
-from six.moves import builtins
+
 
 # Pass through the @profile decorator if line profiler (kernprof) is not in use
 try:
     builtins.profile
 except AttributeError:
-    def profile(func): return func
+    def profile(func):
+        return func
 
 # Error and warning logger
 logger = logging.getLogger(__name__)
 
 
 class flight(object):
+    """Primary Balloon flight simulation class.
+
+    Provides methods for solving the ascent rate equation [ref needed], 
+
+    Parameters
+    ----------
+    environment : :obj:`environment`
+        either soundingEnvironment or forecastEnvironment) already configured
+        with the environmental model. See the Weather Module for more
+        information.
+    balloonGasType : string
+        'Helium'|'Hydrogen'
+    balloonModel : string
+        model of the balloon. Accepted values can be found in
+        available_balloons_parachutes.py.
+    nozzleLift : scalar
+        nozzle lift in kg
+    payloadTrainWeight : scalar
+        weight of the payload train in kg
+    parachuteModel : string
+        model of the parachute. Accepted values can be found in
+        available_balloons_parachutes.py.
+    trainEquivSphereDiam : scalar
+        the diameter (in meters) of sphere that generates the same drag as the
+        train
+    numberOfSimRuns : int
+        total number of simulations to be run. If 1, a deterministic simulation
+        is run. If >1, Monte Carlo perturbations are applied to each simulation
+    [excessPressureCoeff] : scalar (default 1)
+        TODO: the coefficient of excess pressure of the balloon on the gas
+        inside. Currently unused
+    [floatingFlight] : bool (default False)
+        TRUE if the balloon is going to vent air and float rather than burst.
+    [floatingAltitude] : scalar
+        the target altitude for the balloon to float, in meters. Ignored if
+        floatingFlight is FALSE
+    [ventingStart] : scalar (default 1000m)
+        how many meters below the target floating altitude should the venting
+        start. Ignored if floatingFlight is FALSE.
+    [maxFlightTime] : scalar (default 18000 seconds)
+        Maximum duration, in seconds, of a flight to be simulated. Warning:
+        setting a high maxFlightTime during a floatingFlight could take a long
+        time to simulate!
+    [outputFile] : string
+        the path of the output file containing all the simulation data. The
+        format of the file to be generated depends on the extension. Available
+        formats are,
+        'json' : JavaScript data structure, used to provide data to the
+            web interface
+        'kml' : Standard format for geographical data. It can be opened by
+            Google Maps, Google Earth, etc
+        'kmz' : Zipped kml, good for online use (eg Google Maps). The
+            file size is significantly reduced;
+        'csv' : Comma separated values, the preferred format for further
+            data processing with any other software;
+        'csv.zip' : Zipped csv file;
+        'web' : This stores json, kml and csv.zip in the same folder
+            requested. This is used by the web interface to prepare files
+            for export. If no extension is found, a new folder is created
+            and ALL output formats are stored.
+    [debugging] : bool (default False)
+        if TRUE, all the information regarding the simulation will be logged.
+        If it's set to FALSE, only errors will be logged.
+    [log_to_file] : bool
+        determines the location where the errors and debug messages will be
+        logged. If TRUE, an error.log file will be created in your current
+        folder and everything will go in there (make sure you have permissions
+        to write in the current folder, or the simulator will not work!)
+        If FALSE, all the errors and debug messages will be displayed on the
+        terminal or command line.
+    [progress_to_file] : bool
+        If TRUE, a progress .json file will be created in the current folder
+        and will be updated during preflight and then once per 'flight'.
+        If FALSE, progress information about the simulation will be displayed
+        on the terminal or command line.
+    
+    Notes
+    -----
+    * The run() method takes all the necessary steps to run the simulation.
+      For standard users, the use of the run() method is RECOMMENDED.
+
+    * To simply run the simulation, the run() method can be used. :Example:
+
+        >>> my_flight_simulation.run()
+    """
     def __init__(self,
-                 debugging=False,
-                 log_to_file=False,
-                 progress_to_file=False):
+                environment,
+                balloonGasType,
+                balloonModel,
+                nozzleLift,
+                payloadTrainWeight,
+                parachuteModel=None,
+                numberOfSimRuns=10,
+                trainEquivSphereDiam=0.1,
+                floatingFlight=False,
+                floatingAltitude=None,
+                ventingStart=1000,
+                excessPressureCoeff=1.,
+                outputFile='',
+                debugging=False,
+                log_to_file=False,
+                progress_to_file=False):
         """
         Initialize all the parameters of the object and setup the debugging if
         required.
         """
         # User defined variables
-        self.environment = None             # weather object
-        self.balloonGasType = ''
-        self.balloonModel = None            # See available_balloons
-        self.nozzleLift = 0.0               # kg
-        self.payloadTrainWeight = 0.0       # kg
-        self.parachuteModel = None
-        self.numberOfSimRuns = 0
-        self.trainEquivSphereDiam = 0.0     # m
-        self.floatingFlight = False
-        self.floatingAltitude = 0.0         # m
-        self.ventingStart = 1000            # meters below the target altitude
+        self.environment = environment                # weather object
+        self.balloonGasType = balloonGasType
+        self.balloonModel = balloonModel              # See available_balloons
+        self.nozzleLift = nozzleLift                  # kg
+        self.payloadTrainWeight = payloadTrainWeight  # kg
+        self.parachuteModel = parachuteModel
+        self.numberOfSimRuns = numberOfSimRuns
+        self.trainEquivSphereDiam = trainEquivSphereDiam     # m
+        self.floatingFlight = floatingFlight
+        self.floatingAltitude = floatingAltitude             # m
+        self.ventingStart = ventingStart     # m (below the target altitude)
+        self.excessPressureCoeff = excessPressureCoeff
+        self.outputFile = outputFile
         self.maxFlightTime = 18000
-        self.excessPressureCoeff = 1
-        self.outputFile = ''
-        # self.launchSiteLat = 0.0   --- These will be automatically fetched
-        # self.launchSiteLon = 0.0   --- during preflight from the environment object.
-        # self.launchSiteElev = 0.0  --- DO NOT enter them here, they will be ignored.
+
+        # Note: the launch site latitude, longitude and elevation will be
+        # fetched and stored as attributes from the environment object at
+        # runtime. Do not enter values here, as they will be ignored
 
         # Output
         self.results = []
 
         # Simulation precision - not user defined!
-        self.samplingTime = 3               # seconds
+        self._samplingTime = 3               # seconds
 
         # Private variables - do not edit!
         self._preflightCompleted = False
@@ -277,7 +195,6 @@ class flight(object):
         self._totalAscendingMass = 0.0
         self._totalDescendingMass = 0.0
         self._lastFlightBurstAlt = 0.0
-        self.flightTools = flight_tools()
         self.cutdown = False
         self.cutdownAltitude = None
 
@@ -296,6 +213,18 @@ class flight(object):
                             level=log_lev)
         else:
             logger.setLevel(log_lev)
+
+    # ----------------------------------------------------------------------
+    # Properties
+    # ----------------------------------------------------------------------
+    @property
+    def samplingTime(self):
+        """
+        Note: No setter exists for this, as it should not be set by the user
+        """
+        return self._samplingTime
+
+    # ----------------------------------------------------------------------
 
     @profile
     def run(self):
@@ -419,14 +348,16 @@ class flight(object):
             toBreak = True
 
         # If the forecast hasn't been downloaded yet, do it now.
-        if not self.environment._weatherLoaded and isinstance(self.environment, forecastEnvironment):
+        if not self.environment._weatherLoaded and isinstance(self.environment,
+            forecastEnvironment):
             self.environment.maxFlightTime = self.maxFlightTime
             self.environment.loadForecast(self.updateProgress)
             if not self.environment._weatherLoaded:
                 logger.error('Cannot load forecast!')
                 toBreak = True
 
-        # Check if the output file can be written and create it. If not, stop the preflight.
+        # Check if the output file can be written and create it. If not, stop
+        # the preflight.
         try:
             logger.debug("Creating output file {}".format(self.outputFile))
             out = open(self.outputFile, 'w')
@@ -515,22 +446,13 @@ class flight(object):
             self.environment.perturbWind(self.numberOfSimRuns)
 
         # _________________________________________________________________ #
-        # Lifting gas mass calculations
-        if self.balloonGasType == 'Helium':
-            self._gasMolecularMass = (
-                0.945 * self.flightTools.HeMolecularMass +
-                0.055 * self.flightTools.airMolecularMass
-            )
-        else:
-            self._gasMolecularMass = (
-                0.985 * self.flightTools.HydrogenMolecularMass +
-                0.015 * self.flightTools.airMolecularMass
-            )
+        # Lifting gas
+        self._gasMolecularMass = ft.MIXEDGAS_MOLECULAR_MASS[self.balloonGasType]
 
         # Use flight tools to calculate all preliminary balloon calculations
         # (gas mass, balloon volume and diameter at inflation)
         (self._gasMassAtInflation, self._balloonVolumeAtInflation,
-            self._balloonDiaAtInflation) = self.flightTools.liftingGasMass(
+            self._balloonDiaAtInflation) = ft.liftingGasMass(
                 self.nozzleLift,
                 self._balloonWeight,
                 self.environment.inflationTemperature,
@@ -563,7 +485,7 @@ class flight(object):
         if self.floatingFlight:
             # Calculate the balloon characteristics at the floating altitude
             (self._gasMassAtFloat, self._balloonVolumeAtFloat,
-                self._balloonDiaAtFloat) = self.flightTools.liftingGasMass(
+                self._balloonDiaAtFloat) = fools.liftingGasMass(
                     # This is the Nozzle Lift, which has to be equal to the
                     # payload train weight for the balloon to float. If they
                     # are, the sum of the (vertical) forces is 0.
@@ -592,10 +514,10 @@ class flight(object):
 
         # Configure the flight tools for the correct parachute
         if self.parachuteModel is not None:
-            self.flightTools.parachuteAref = \
+            self.parachuteAref = \
                 available_balloons_parachutes.parachutes[self.parachuteModel]
         else:
-            self.flightTools.parachuteAref = 0.0
+            self.parachuteAref = 0.0
 
         self._preflightCompleted = True
 
@@ -612,7 +534,6 @@ class flight(object):
         If successful, no errors are thrown. Enable debugging for detailed
         information.
         """
-
         # Check whether the preflight sequence was performed. If not, stop the
         # simulation.
         if not self._preflightCompleted:
@@ -622,11 +543,11 @@ class flight(object):
 
         # Flight-specific variables initialization
         # Prepare the flight tools to deliver results specific to this flight.
-        self.flightTools.highCD = self._highCD[flightNumber]
-        self.flightTools.lowCD = self._lowCD[flightNumber]
-        self.flightTools.ReBand = self._ReBand[flightNumber]
-        self.flightTools.transition = self._transition[flightNumber]
-        self.flightTools.parachuteCD = self._parachuteCD[flightNumber]
+        highCD = self._highCD[flightNumber]
+        lowCD = self._lowCD[flightNumber]
+        ReBand = self._ReBand[flightNumber]
+        transition = self._transition[flightNumber]
+        parachuteCD = self._parachuteCD[flightNumber]
         self._totalAscendingMass = (self.payloadTrainWeight +
                                     self._gasMassAtInflation +
                                     self._balloonWeight)
@@ -645,15 +566,15 @@ class flight(object):
                 self.environment.getMCWindSpeed[flightNumber]
 
         logger.debug('Flight variables initialized.')
-        logger.debug('Low CD: %.4f' % self.flightTools.lowCD)
-        logger.debug('High CD: %.4f' % self.flightTools.highCD)
-        logger.debug('Transition: %.4f' % self.flightTools.transition)
-        logger.debug('Re Band: %.4f' % self.flightTools.ReBand)
+        logger.debug('Low CD: %.4f' % lowCD)
+        logger.debug('High CD: %.4f' % highCD)
+        logger.debug('Transition: %.4f' % transition)
+        logger.debug('Re Band: %.4f' % ReBand)
         logger.debug('Burst Diameter: %.4f' %
                      self._burstDiameter[flightNumber])
         logger.debug('Balloon Return Fraction: %.4f' %
                      self._balloonReturnFraction[flightNumber])
-        logger.debug('Parachute CD: %.4f' % self.flightTools.parachuteCD)
+        logger.debug('Parachute CD: %.4f' % parachuteCD)
 
         logger.debug('Total ascending mass: %.4f' % self._totalAscendingMass)
         logger.debug('Total descending mass: %.4f' % self._totalDescendingMass)
@@ -737,7 +658,7 @@ class flight(object):
                 # the target altitude to start venting gas out. The altitude at
                 # which venting starts is floatingAltitude - ventingStart.
                 if self.floatingFlight:
-                    gasMass = self.flightTools.gasMassForFloat(
+                    gasMass = ft.gasMassForFloat(
                         altitude,
                         self.floatingAltitude,
                         self._gasMassAtInflation,
@@ -749,20 +670,24 @@ class flight(object):
 
 
                 # Calculate current balloon diameter to check for burst
-                gasDensity = self.excessPressureCoeff * self.environment.getPressure(self._currentLatPosition,
-                                                                                     self._currentLonPosition, altitude,
-                                                                                     currentTime) * 100 * self._gasMolecularMass / (
-                                 8.31447 * tools.c2kel(
-                                     self.environment.getTemperature(self._currentLatPosition, self._currentLonPosition,
-                                                                     altitude, currentTime)))
+                gasTemp = tools.c2kel(self.environment.getTemperature(
+                    self._currentLatPosition, self._currentLonPosition,
+                    altitude, currentTime))
+                gasDensity = (self.excessPressureCoeff *
+                    self.environment.getPressure(self._currentLatPosition,
+                        self._currentLonPosition, altitude,currentTime) * 100
+                        * self._gasMolecularMass / (8.31447 * gasTemp))
                 balloonVolume = gasMass / gasDensity
                 balloonDiameter = (6 * balloonVolume / pi) ** (1. / 3)
 
-                # If floating flight, calculate the nozzle lift if the gas is being vented.
+                # If floating flight, calculate the nozzle lift if the gas is
+                # being vented.
                 if self.floatingFlight:
-                    nozzleLift = self.flightTools.nozzleLiftForFloat(
+                    nozzleLift = ft.nozzleLiftForFloat(
                         self.nozzleLift,
-                        self.environment.getDensity(self._currentLatPosition, self._currentLonPosition, altitude,
+                        self.environment.getDensity(self._currentLatPosition,
+                                                    self._currentLonPosition,
+                                                    altitude,
                                                     currentTime),
                         gasDensity,
                         balloonVolume,
@@ -778,17 +703,33 @@ class flight(object):
                     # THE BALLOON DIDN'T BURST
 
                     # Calculate balloon and train drag
-                    currentDensity = self.environment.getDensity(self._currentLatPosition, self._currentLonPosition,
-                                                                 altitude, currentTime)
-                    currentViscosity = self.environment.getViscosity(self._currentLatPosition, self._currentLonPosition,
-                                                                     altitude, currentTime)
-                    balloonDrag = self.flightTools.balloonDrag(balloonDiameter, ascentRate, currentDensity,
-                                                               currentViscosity)
-                    trainDrag = self.flightTools.balloonDrag(self.trainEquivSphereDiam, ascentRate, currentDensity,
-                                                             currentViscosity)
+                    currentDensity = self.environment.getDensity(
+                        self._currentLatPosition, self._currentLonPosition,
+                        altitude, currentTime)
+                    currentViscosity = self.environment.getViscosity(
+                        self._currentLatPosition, self._currentLonPosition,
+                        altitude, currentTime)
+                    balloonDrag = ft.balloonDrag(balloonDiameter,
+                                                 ascentRate,
+                                                 currentDensity,
+                                                 currentViscosity,
+                                                 lowCD,
+                                                 highCD,
+                                                 ReBand,
+                                                 transition
+                                                 )
+                    trainDrag = ft.balloonDrag(self.trainEquivSphereDiam,
+                                                   ascentRate,
+                                                   currentDensity,
+                                                   currentViscosity,
+                                                   lowCD,
+                                                   highCD,
+                                                   ReBand,
+                                                   transition)
 
                     # External Forces
-                    externalForces = (nozzleLift - self.payloadTrainWeight) * 9.81 - balloonDrag - trainDrag
+                    externalForces = ((nozzleLift - self.payloadTrainWeight) *
+                        9.81) - balloonDrag - trainDrag
 
                     # Derivatives
                     dvdt = externalForces / self._totalAscendingMass
@@ -799,7 +740,8 @@ class flight(object):
                 else:
                     # THE BALLOON HAS BURST
 
-                    # Floating flight is set to false because if the balloon has burst, the flight is now standard.
+                    # Floating flight is set to false because if the balloon
+                    # has burst, the flight is now standard.
                     self._lastFlightBurst = True
                     self._lastFlightBurstAlt = altitude
                     return numpy.array([0.0, 0.0])
@@ -809,22 +751,30 @@ class flight(object):
 
 
                 # Calculate parachute Drag
-                currentDensity = self.environment.getDensity(self._currentLatPosition, self._currentLonPosition,
-                                                             altitude, currentTime)
-                currentViscosity = self.environment.getViscosity(self._currentLatPosition, self._currentLonPosition,
-                                                                 altitude, currentTime)
+                currentDensity = self.environment.getDensity(
+                    self._currentLatPosition, self._currentLonPosition,
+                    altitude, currentTime)
+                currentViscosity = self.environment.getViscosity(
+                    self._currentLatPosition, self._currentLonPosition,
+                    altitude, currentTime)
                 if self.parachuteModel == None:
                     parachuteDrag = 0
                 else:
-                    parachuteDrag = self.flightTools.parachuteDrag(abs(ascentRate), currentDensity)
-
+                    parachuteDrag = ft.parachuteDrag(abs(ascentRate),
+                        currentDensity, self.parachuteAref, parachuteCD)
                 # Train Drag
-                trainDrag = abs(self.flightTools.balloonDrag(self.trainEquivSphereDiam, abs(ascentRate), currentDensity,
-                                                             currentViscosity))
+                trainDrag = abs(ft.balloonDrag(self.trainEquivSphereDiam,
+                                                   abs(ascentRate),
+                                                   currentDensity,
+                                                   currentViscosity,
+                                                   lowCD, highCD,
+                                                   ReBand,
+                                                   transition))
 
                 # External Forces
                 externalForces = -self.payloadTrainWeight * 9.81 * (
-                    1 + self._balloonReturnFraction[flightNumber]) + parachuteDrag + trainDrag
+                    1 + self._balloonReturnFraction[flightNumber])\
+                    + parachuteDrag + trainDrag
 
                 # Derivatives
                 dvdt = externalForces / self._totalDescendingMass
@@ -832,18 +782,21 @@ class flight(object):
 
                 return numpy.array([dhdt, dvdt])
 
-        # Define the initial conditions, the time vector at which we want simulation data to be stored, and run the
-        # integration.
-        # Note: the simulation carries on all the way to the maxFlightTime, even if the altitude becomes negative.
-        # Negative values of altitude will be trimmed later on.
+        # Define the initial conditions, the time vector at which we want
+        # simulation data to be stored, and run the integration.
+        # Note: the simulation carries on all the way to the maxFlightTime,
+        # even if the altitude becomes negative. Negative values of altitude
+        # will be trimmed later on.
         initialConditions = numpy.array([self.launchSiteElev, 0.0])
-        timeVector = numpy.arange(0, self.maxFlightTime + self.samplingTime, self.samplingTime)
+        timeVector = numpy.arange(0, self.maxFlightTime + self.samplingTime,
+            self.samplingTime)
 
         logger.debug('Beginning integration.')
 
         ### INTEGRATION ###
         if self._usingGFS:
-            solution = odeint(ode, initialConditions, timeVector, rtol=1e-3, atol=1e-3)
+            solution = odeint(ode, initialConditions, timeVector, rtol=1e-3,
+                atol=1e-3)
         else:
             solution = odeint(ode, initialConditions, timeVector)
         ###################
@@ -854,12 +807,15 @@ class flight(object):
         solution_altitude = numpy.array(solution[:, 0])
         #solution_ascrate = numpy.array(solution[:,1]) ### Currently not used.
 
-        # Trim negative altitude values from results and then trim time to the same length.
+        # Trim negative altitude values from results and then trim time to the
+        # same length.
         if self._lastFlightBurst:
             solution_altitude = solution_altitude[solution_altitude > 0]
             solution_altitude[-1] = 0.0
 
-        #solution_ascrate = solution_ascrate[:len(solution_altitude)] ### Currently not used.
+        ### Currently not used.
+        #solution_ascrate = solution_ascrate[:len(solution_altitude)]
+
         timeVector = timeVector[:len(solution_altitude)]
 
         # Calculate drift
@@ -868,26 +824,33 @@ class flight(object):
         latitudeProfile = [self.launchSiteLat]
         longitudeProfile = [self.launchSiteLon]
         for eachAlt, eachTime in zip(solution_altitude[1:], timeVector[1:]):
-            # Calculate the position of the balloon at each point and use it to work out its location
-            currentTime = self.environment.dateAndTime + timedelta(seconds=float(eachTime))
+            # Calculate the position of the balloon at each point and use it to
+            # work out its location
+            currentTime = self.environment.dateAndTime + timedelta(
+                seconds=float(eachTime))
             # Gather wind speed and convert to m/s
-            windSpeed = currentFlightWindSpeed(latitudeProfile[-1], longitudeProfile[-1], eachAlt,
-                                               currentTime) * 0.514444
+            windSpeed = currentFlightWindSpeed(latitudeProfile[-1],
+                longitudeProfile[-1], eachAlt, currentTime) * 0.514444
             # Convert the wind to u- and v-coordinates
             windLon, windLat = tools.dirspeed2uv(
-                currentFlightWindDirection(latitudeProfile[-1], longitudeProfile[-1], eachAlt, currentTime), windSpeed)
-            # Store the drift in meters (this is the distance between the LAUNCH SITE and the current location)
+                currentFlightWindDirection(latitudeProfile[-1],
+                    longitudeProfile[-1], eachAlt, currentTime),
+                windSpeed)
+            # Store the drift in meters (this is the distance between the
+            # LAUNCH SITE and the current location)
             lastDriftLat += windLat * self.samplingTime
             lastDriftLon += windLon * self.samplingTime
             # Convert it to degrees
-            dLat, dLon = tools.m2deg(lastDriftLat, lastDriftLon, latitudeProfile[-1])
+            dLat, dLon = tools.m2deg(lastDriftLat, lastDriftLon,
+                latitudeProfile[-1])
             # Store the new latitude and longitude
             latitudeProfile.append(self.launchSiteLat + dLat)
             longitudeProfile.append(self.launchSiteLon + dLon)
 
 
-        # Check that latitude and longitude are within bounds and correct if they are not (for example, if the balloon
-        # flew over the North or the South Pole).
+        # Check that latitude and longitude are within bounds and correct if
+        # they are not (for example, if the balloon flew over the North or the
+        # South Pole).
         for i in range(len(latitudeProfile)):
             if latitudeProfile[i] > 90:
                 latitudeProfile[i] = 180 - latitudeProfile[i]
@@ -907,383 +870,427 @@ class flight(object):
         # Find burst point index or "target altitude reached" index
         if self._lastFlightBurst:
             # Store burst point index
-            index = tools.find_nearest_index(solution_altitude, self._lastFlightBurstAlt)
+            index = tools.find_nearest_index(solution_altitude,
+                self._lastFlightBurstAlt)
         else:
             if solution_altitude[-1] < self.floatingAltitude - 100:
-                # In this case, the balloon hasn't reached the target altitude. This is probably because the
-                # maxFlightTime is too low. Show an error.
+                # In this case, the balloon hasn't reached the target altitude.
+                # This is probably because the maxFlightTime is too low:
+                #  Show an error.
                 index = -1
             else:
                 # Store target altitude reached index
-                index = tools.find_nearest_index(solution_altitude, self.floatingAltitude)
+                index = tools.find_nearest_index(solution_altitude,
+                    self.floatingAltitude)
 
         # STORE RESULTS OF CURRENT SIMULATION
         if self._lastFlightBurst:
-            # The results are:   flight number  time vector latitude profile longitude profile   altitude    burst index   burst altitude   has burst
+            # The results are:   flight number  time vector latitude profile
+            #   longitude profile   altitude    burst index   burst altitude
+            #   has burst
             self.results.append(
-                [flightNumber + 1, timeVector, latitudeProfile, longitudeProfile, solution_altitude, index,
+                [flightNumber + 1, timeVector, latitudeProfile,
+                longitudeProfile, solution_altitude, index,
                  self._lastFlightBurstAlt, True])
         else:
-            # The results are:   flight number  time vector latitude profile longitude profile   altitude   burst index  target altitude  has burst
+            # The results are:   flight number  time vector latitude profile
+            #   longitude profile   altitude   burst index  target altitude 
+            #   has burst
             self.results.append(
-                [flightNumber + 1, timeVector, latitudeProfile, longitudeProfile, solution_altitude, index,
+                [flightNumber + 1, timeVector, latitudeProfile,
+                longitudeProfile, solution_altitude, index,
                  self.floatingAltitude, False])
 
         logger.debug('Simulation completed.')
 
+    def write_JSON(self, filename):
+        """
+        """
+        # GENERATE JSON FILE OUT OF RESULTS
+
+        # Every how many points should we store one (this is used to
+        # reduce the size of the json file)
+        shrinkFactor = 5
+
+
+        # Initialize the data lists
+        jsonBurstMarkers = []
+        jsonLandingMarkers = []
+        jsonFloatMarkers = []
+        jsonPaths = []
+
+        # Go through the results of each flight simulation
+        for flightResult in self.results:
+            thisFlightHasBurst = flightResult[7]
+
+            # Build up the flight path data
+            jsonPath = ['{ "points" : [\n']
+            jsonPoints = []
+            pointNumber = 0
+            for eachPoint in numpy.transpose(flightResult[2:5]):
+                if pointNumber % shrinkFactor == 0:
+                    jsonPoints.append('{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f }\n' % (
+                        numpy.clip(eachPoint[0], -85.0511, 85.0511), eachPoint[1], eachPoint[2]))
+                pointNumber += 1
+
+            jsonPath.append(','.join(jsonPoints))
+            jsonPath.append('\n] }')
+            jsonPaths.append(''.join(jsonPath))
+
+            if thisFlightHasBurst:
+                # BALLOON HAS BURST DURING THIS SIMULATION
+                # Build up the landing markers data
+                flightHrs, flightMins, flightSecs = tools.prettySeconds(flightResult[1][-1])
+                landTime = self.environment.dateAndTime + timedelta(seconds=float(flightResult[1][-1]))
+                jsonLandingMarkers.append(
+                    '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Payload Landing Site", "simNumber" : "%d", "otherData" : "Flight time: %d hours, %d mins and %d secs <br /> ETA: %s" }\n' % (
+                        numpy.transpose(flightResult[2:5])[-1][0], numpy.transpose(flightResult[2:5])[-1][1],
+                        numpy.transpose(flightResult[2:5])[-1][1], flightResult[0], flightHrs, flightMins,
+                        flightSecs, landTime.strftime("%d/%m/%Y %H:%M:%S")))
+
+                # Build up the burst markers data
+                jsonBurstMarkers.append(
+                    '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Balloon Burst", "simNumber" : "%d", "otherData" : "Burst altitude: %.0f m"  }\n' % (
+                        numpy.transpose(flightResult[2:5])[flightResult[5]][0],
+                        numpy.transpose(flightResult[2:5])[flightResult[5]][1], flightResult[6],
+                        flightResult[0],
+                        flightResult[6]))
+            else:
+                # BALLOON HASN'T BURST DURING THIS SIMULATION
+
+                # Build up the float markers data
+                if flightResult[5] == -1:
+                    # This is the case when the target altitude was not reached. Show an error to the user.
+                    jsonFloatMarkers.append(
+                        '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Target Altitude NOT Reached", "simNumber" : "%d", "otherData" : "Max altitude: %.0f m <br />Try to increase the flight duration." }\n' % (
+                            numpy.transpose(flightResult[2:5])[flightResult[5]][0],
+                            numpy.transpose(flightResult[2:5])[flightResult[5]][1], flightResult[6],
+                            flightResult[0], numpy.transpose(flightResult[2:5])[flightResult[5]][2]))
+                else:
+                    jsonFloatMarkers.append(
+                        '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Target Altitude Reached", "simNumber" : "%d", "otherData" : "Target altitude: %.0f m" }\n' % (
+                            numpy.transpose(flightResult[2:5])[flightResult[5]][0],
+                            numpy.transpose(flightResult[2:5])[flightResult[5]][1], flightResult[6],
+                            flightResult[0], flightResult[6]))
+
+        # Put all the non-empty lists above together
+        if len(jsonBurstMarkers) != 0:
+            jsonBurstMarkers = ['"burstMarkers" : [\n', ','.join(jsonBurstMarkers), '],']
+
+        if len(jsonLandingMarkers) != 0:
+            jsonLandingMarkers = ['"landingMarkers" : [\n', ','.join(jsonLandingMarkers), '],']
+
+        if len(jsonFloatMarkers) != 0:
+            jsonFloatMarkers = ['"floatMarkers" : [\n', ','.join(jsonFloatMarkers), '],']
+
+        jsonPaths = ['"flightPaths" : [\n', ','.join(jsonPaths), ']']
+
+        # Put them all together in one single array
+        jsonToAdd = [
+            '{',
+            ''.join(jsonBurstMarkers),
+            ''.join(jsonFloatMarkers),
+            ''.join(jsonLandingMarkers),
+            ''.join(jsonPaths),
+            '}'
+        ]
+
+        # Try to gain write permission on the output file specified upon configuration
+        try:
+            jsonFile = open(filename, 'w')
+        except IOError:
+            logger.error('Cannot create output file.')
+            return
+
+        # Write all the data to the file
+        jsonFile.write(''.join(jsonToAdd))
+        jsonFile.close()
+
+    def write_KML(self, filename, zipped=False):
+        """GENERATE KML OUT OF RESULTS
+
+        Also allows zipped kml (kmz) if .kmz is provided in the extension
+        """
+
+        # Author of the KML file
+        kmlAuthor = 'ASTRA High Altitude Balloon Flight Planner, University of Southampton'
+        launchPinURL = 'http://maps.google.com/mapfiles/ms/micons/red-dot.png'
+        burstPinURL = 'http://maps.google.com/mapfiles/ms/micons/yellow-dot.png'
+        landingPinURL = 'http://maps.google.com/mapfiles/ms/micons/red-dot.png'
+
+        kmlPaths = []
+        kmlMarkers = []
+
+        for flightResult in self.results:
+            flightHrs, flightMins, flightSecs = tools.prettySeconds(flightResult[1][-1])
+            thisFlightHasBurst = flightResult[7]
+
+            kmlPath = [
+                '<Placemark>\n<name>Simulation %d</name>\n<styleUrl>#stratoLine</styleUrl>\n<LineString>\n<coordinates>\n' % (
+                    flightResult[0])]
+
+            pointNumber = 0
+            for eachPoint in numpy.transpose(flightResult[2:5]):
+                if thisFlightHasBurst:
+                    if pointNumber % 10 == 0:
+                        kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
+                else:
+                    kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
+                pointNumber += 1
+
+            kmlPath.append(
+                '</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</LineString>\n</Placemark>\n')
+
+            kmlPaths.append(''.join(kmlPath))
+
+            # Add balloon launch point
+            kmlMarkers.append(
+                '<Placemark>\n<name>Balloon Launch</name>\n<styleUrl>#launchPin</styleUrl>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
+                    numpy.transpose(flightResult[2:5])[0][1], numpy.transpose(flightResult[2:5])[0][0],
+                    numpy.transpose(flightResult[2:5])[0][2]))
+
+            if thisFlightHasBurst:
+                # Add balloon burst point
+                kmlMarkers.append(
+                    '<Placemark>\n<name>Balloon burst (Simulation %d)</name>\n<styleUrl>#burstPin</styleUrl>\n<description>Burst altitude: %.0f m.' % (
+                        flightResult[0], flightResult[6]))
+                kmlMarkers.append(
+                    '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
+                        numpy.transpose(flightResult[2:5])[flightResult[5]][1],
+                        numpy.transpose(flightResult[2:5])[flightResult[5]][0], flightResult[6]))
+
+                # Add balloon landing point
+                kmlMarkers.append(
+                    '<Placemark>\n<name>Payload landing (Simulation %d)</name>\n<styleUrl>#landingPin</styleUrl>\n<description>Flight time: %d hours, %d minutes and %d seconds.' % (
+                        flightResult[0], flightHrs, flightMins, flightSecs))
+                kmlMarkers.append(
+                    '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
+                        numpy.transpose(flightResult[2:5])[-1][1], numpy.transpose(flightResult[2:5])[-1][0],
+                        numpy.transpose(flightResult[2:5])[-1][2]))
+            else:
+                # Add target altitude reached point
+                kmlMarkers.append(
+                    '<Placemark>\n<name>Target altitude reached (Simulation %d)</name>\n<styleUrl>#burstPin</styleUrl>\n<description>Target altitude: %.0f m.' % (
+                        flightResult[0], flightResult[6]))
+                kmlMarkers.append(
+                    '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
+                        numpy.transpose(flightResult[2:5])[flightResult[5]][1],
+                        numpy.transpose(flightResult[2:5])[flightResult[5]][0], flightResult[6]))
+
+        kmlToAdd = [
+            '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">\n<Document>\n<name>Flight Simulations</name>\n<atom:author>\n<atom:name>%s</atom:name>\n</atom:author>\n' % kmlAuthor,
+            '<Style id="landingPin">\n<IconStyle>\n<scale>1.0</scale>\n<Icon>\n<href>%s</href>\n</Icon>\n</IconStyle>\n</Style>\n' % landingPinURL,
+            '<Style id="launchPin">\n<IconStyle>\n<scale>1.0</scale>\n<Icon>\n<href>%s</href>\n</Icon>\n</IconStyle>\n</Style>\n' % launchPinURL,
+            '<Style id="burstPin">\n<IconStyle>\n<scale>1.0</scale>\n<Icon>\n<href>%s</href>\n</Icon>\n</IconStyle>\n</Style>\n' % burstPinURL,
+            '<Style id="stratoLine">\n<LineStyle>\n<width>1.0</width>\n</LineStyle>\n</Style>\n',
+            ''.join(kmlPaths),
+            ''.join(kmlMarkers),
+            '</Document>\n</kml>'
+        ]
+
+        if zipped:
+            import zipfile, tempfile
+
+            try:
+                outputKml = tempfile.NamedTemporaryFile(mode='w')
+            except IOError:
+                logger.error('Error: cannot create a new temporary file')
+                return
+
+            outputKml.write(''.join(kmlToAdd))
+            outputKml.flush()
+
+
+            # Convert KML to KMZ by zipping it.
+            try:
+                import zlib
+
+                zipCompression = zipfile.ZIP_DEFLATED
+            except:
+                zipCompression = zipfile.ZIP_STORED
+
+            with zipfile.ZipFile(filename, 'w') as zipKmz:
+                zipKmz.write(outputKml.name, arcname='output.kml',
+                    compress_type=zipCompression)
+            zipKmz.close()
+            outputKml.close()
+
+            logger.debug(('KMZ file generated! ', filename))
+
+        else:
+            # Write the KML file.
+
+            try:
+                outputKml = open(filename, 'w')
+            except IOError:
+                logger.error('Error: cannot create the output file in the given directory')
+                return
+
+            outputKml.write(''.join(kmlToAdd))
+            outputKml.close()
+
+    def write_CSV(self, filename, zipped=False):
+        """GENERATE CSV FILE OUT OF RESULTS
+        """
+        # Calculate how many rows we need in total
+        totalRows = 0
+        for flightResult in self.results:
+            totalRows += len(flightResult[1])
+
+        # Columns are Flight #, Time from launch, Lat, Lon, Alt, Remarks
+        totalColumns = 6
+
+        # Add one column for the header and generate an empty matrix
+        csvMatrix = numpy.zeros((totalRows + 2) * totalColumns).reshape(
+            totalRows + 2, totalColumns).astype('|S100')
+        # Clear the remarks column (it was full of zeros)
+        csvMatrix[..., 5] = ''
+
+        currentPosition = 2
+        # Populate matrix with data
+        for flightResult in self.results:
+            numberOfPoints = len(flightResult[1])
+            thisFlightHasBurst = flightResult[7]
+
+            # Flight number, Time, Lat, Lon, Alt
+            for i in range(5):
+                csvMatrix[currentPosition:currentPosition + numberOfPoints, i] =\
+                 flightResult[i]
+
+            # Remarks: Launch
+            csvMatrix[currentPosition, 5] = 'Balloon Launch'
+
+            if thisFlightHasBurst:
+                # Remarks: Burst
+                csvMatrix[currentPosition + flightResult[5], 5] = 'Balloon Burst'
+
+                # Remarks: Landing
+                csvMatrix[currentPosition + numberOfPoints - 1, 5] =\
+                    'Balloon Landed'
+            else:
+                # Remarks: Target Altitude Reached
+                csvMatrix[currentPosition + flightResult[5], 5] =\
+                    'Balloon has reached target altitude'
+
+            currentPosition += numberOfPoints
+
+        # Add header
+        csvMatrix[0] = [
+            'Data generated by the ASTRA High Altitude Balloon Flight Planner - University of Southampton', '',
+            '', '', '', '']
+
+        csvMatrix[1] = ['Simulation #', 'Time from launch [s]', 'Latitude',
+            'Longitude', 'Altitude [m]', 'Remarks']
+
+        # Save file
+        if not zipped:
+
+            numpy.savetxt(filename, csvMatrix, delimiter=',', fmt='%s')
+
+        else:
+            import zipfile, tempfile
+
+            try:
+                outputCsv = tempfile.NamedTemporaryFile()
+            except IOError:
+                logger.error('Error: cannot create a new temporary file')
+                return
+
+            # Create a zipped version of the file, since it's probably big
+            # (approx 150KB/simulation not compressed)
+            numpy.savetxt(outputCsv, csvMatrix, delimiter=',', fmt='%s')
+            outputCsv.flush()
+
+            # Zip CSV file
+            try:
+                import zlib
+
+                zipCompression = zipfile.ZIP_DEFLATED
+            except:
+                zipCompression = zipfile.ZIP_STORED
+
+            with zipfile.ZipFile(filename, 'w') as zipCsv:
+                zipCsv.write(outputCsv.name,
+                    arcname='ASTRA Simulation Results.csv',
+                    compress_type=zipCompression)
+            zipCsv.close()
+            outputCsv.close()
+
+            logger.debug(('CSV-ZIP file generated! ', self.outputFile))
+
+    def write(self, filename):
+        """
+        Function responsible for storing the data in the given format.
+
+        The format of the file to be generated depends on the extension given
+        in the outputFile.
+
+        Parameters
+        ----------
+        filename : string
+            the name of the output file. Accepted extensions are:
+            'json'  JavaScript data structure, used to pass data to the web
+                interface;
+            'kml'   Standard format for geographic data. It can be opened by
+                Google Maps, Google Earth, etc;
+            'kmz'   Zipped kml, good for online use (eg Google Maps). The file
+                size is significantly reduced;
+            'csv'   Comma separated values, the preferred format for further
+                data processing with any other software;
+            'web'   This stores json, kml and csv in the same folder requested.
+                This is used by the web interface to prepare files for export.
+            none    If no extension is found, a new folder is created and ALL
+                output formats are stored.
+        """
+        # Extract the output format from the outputFile path.
+        fileExtension = os.path.splitext(filename)[1]
+
+        # Remove the dot from the extension
+        data_format = fileExtension[1:]
+
+        logger.debug('Attempting to store data... Requested format: %s' % data_format)
+
+        if data_format in ('json', 'JSON'):
+            self.write_JSON(filename)
+
+        elif data_format in ('kml', 'KML'):
+            self.write_KML(filename, zipped=False)
+
+        elif data_format in ('kmz', 'KMZ'):
+            self.write_KML(filename, zipped=True)
+
+        elif data_format in ('csv', 'CSV'):
+            self.write_CSV(filename, zipped=False)
+
+        elif data_format in ('zip', 'ZIP'):
+            # This is used for .csv.zip double extension:
+            self.write_CSV(filename, zipped=True)
+
+        else:
+            logger.error('Output data format not understood! Is the specified extension correct?')
+
+        # Removing this temporarily: needs further success checks, but
+        # os.path.isfile doesn't check if the file has been written recently.
+        # logger.debug('Output file {} generated.')
+
     @profile
     def postflight(self):
         """
-        After all the simulations have been executed, this method puts the results together, processes them and stores
-        them in the outputFormat required.
-        The format of the file to be generated depends on the extension given in the outputFile.
-        Accepted extensions are:
-            'json'  JavaScript data structure, used to pass data to the web interface;
-            'kml'   Standard format for geographic data. It can be opened by Google Maps, Google Earth, etc;
-            'kmz'   Zipped kml, good for online use (eg Google Maps). The file size is significantly reduced;
-            'csv'   Comma separated values, the preferred format for further data processing with any other software;
-            'web'   This stores json, kml and csv in the same folder requested. This is used by the web interface to
-                    prepare files for export.
-            none    If no extension is found, a new folder is created and ALL output formats are stored.
+        After all the simulations have been executed, this method puts the
+        results together, processes them and stores them in the outputFormat
+        required.
 
         The results are stored in the outputFile specified upon configuration.
+
+        See Also
+        --------
+        astra.simulator.flight, self.outputFile
         """
-
-        def store_data(outputPath, data_format):
-            """
-            Function responsible for storing the data in the given format.
-            """
-
-            logger.debug('Storing data... Requested format: %s' % data_format)
-
-            if data_format in ('json', 'JSON'):
-                # GENERATE JSON FILE OUT OF RESULTS
-
-                # Every how many points should we store one (this is used to reduce the size of the json file)
-                shrinkFactor = 5
-
-
-                # Initialize the data lists
-                jsonBurstMarkers = []
-                jsonLandingMarkers = []
-                jsonFloatMarkers = []
-                jsonPaths = []
-
-                # Go through the results of each flight simulation
-                for flightResult in self.results:
-                    thisFlightHasBurst = flightResult[7]
-
-                    # Build up the flight path data
-                    jsonPath = ['{ "points" : [\n']
-                    jsonPoints = []
-                    pointNumber = 0
-                    for eachPoint in numpy.transpose(flightResult[2:5]):
-                        if pointNumber % shrinkFactor == 0:
-                            jsonPoints.append('{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f }\n' % (
-                                numpy.clip(eachPoint[0], -85.0511, 85.0511), eachPoint[1], eachPoint[2]))
-                        pointNumber += 1
-
-                    jsonPath.append(','.join(jsonPoints))
-                    jsonPath.append('\n] }')
-                    jsonPaths.append(''.join(jsonPath))
-
-                    if thisFlightHasBurst:
-                        # BALLOON HAS BURST DURING THIS SIMULATION
-                        # Build up the landing markers data
-                        flightHrs, flightMins, flightSecs = tools.prettySeconds(flightResult[1][-1])
-                        landTime = self.environment.dateAndTime + timedelta(seconds=float(flightResult[1][-1]))
-                        jsonLandingMarkers.append(
-                            '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Payload Landing Site", "simNumber" : "%d", "otherData" : "Flight time: %d hours, %d mins and %d secs <br /> ETA: %s" }\n' % (
-                                numpy.transpose(flightResult[2:5])[-1][0], numpy.transpose(flightResult[2:5])[-1][1],
-                                numpy.transpose(flightResult[2:5])[-1][1], flightResult[0], flightHrs, flightMins,
-                                flightSecs, landTime.strftime("%d/%m/%Y %H:%M:%S")))
-
-                        # Build up the burst markers data
-                        jsonBurstMarkers.append(
-                            '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Balloon Burst", "simNumber" : "%d", "otherData" : "Burst altitude: %.0f m"  }\n' % (
-                                numpy.transpose(flightResult[2:5])[flightResult[5]][0],
-                                numpy.transpose(flightResult[2:5])[flightResult[5]][1], flightResult[6],
-                                flightResult[0],
-                                flightResult[6]))
-                    else:
-                        # BALLOON HASN'T BURST DURING THIS SIMULATION
-
-                        # Build up the float markers data
-                        if flightResult[5] == -1:
-                            # This is the case when the target altitude was not reached. Show an error to the user.
-                            jsonFloatMarkers.append(
-                                '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Target Altitude NOT Reached", "simNumber" : "%d", "otherData" : "Max altitude: %.0f m <br />Try to increase the flight duration." }\n' % (
-                                    numpy.transpose(flightResult[2:5])[flightResult[5]][0],
-                                    numpy.transpose(flightResult[2:5])[flightResult[5]][1], flightResult[6],
-                                    flightResult[0], numpy.transpose(flightResult[2:5])[flightResult[5]][2]))
-                        else:
-                            jsonFloatMarkers.append(
-                                '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Target Altitude Reached", "simNumber" : "%d", "otherData" : "Target altitude: %.0f m" }\n' % (
-                                    numpy.transpose(flightResult[2:5])[flightResult[5]][0],
-                                    numpy.transpose(flightResult[2:5])[flightResult[5]][1], flightResult[6],
-                                    flightResult[0], flightResult[6]))
-
-                # Put all the non-empty lists above together
-                if len(jsonBurstMarkers) != 0:
-                    jsonBurstMarkers = ['"burstMarkers" : [\n', ','.join(jsonBurstMarkers), '],']
-
-                if len(jsonLandingMarkers) != 0:
-                    jsonLandingMarkers = ['"landingMarkers" : [\n', ','.join(jsonLandingMarkers), '],']
-
-                if len(jsonFloatMarkers) != 0:
-                    jsonFloatMarkers = ['"floatMarkers" : [\n', ','.join(jsonFloatMarkers), '],']
-
-                jsonPaths = ['"flightPaths" : [\n', ','.join(jsonPaths), ']']
-
-                # Put them all together in one single array
-                jsonToAdd = [
-                    '{',
-                    ''.join(jsonBurstMarkers),
-                    ''.join(jsonFloatMarkers),
-                    ''.join(jsonLandingMarkers),
-                    ''.join(jsonPaths),
-                    '}'
-                ]
-
-                # Try to gain write permission on the output file specified upon configuration
-                try:
-                    jsonFile = open(outputPath, 'w')
-                except IOError:
-                    logger.error('Cannot create output file.')
-                    return
-
-                # Write all the data to the file
-                jsonFile.write(''.join(jsonToAdd))
-                jsonFile.close()
-
-
-            elif data_format in ('kml', 'kmz', 'KML', 'KMZ'):
-                # GENERATE KML OUT OF RESULTS
-
-                # Author of the KML file
-                kmlAuthor = 'ASTRA High Altitude Balloon Flight Planner, University of Southampton'
-                launchPinURL = 'http://maps.google.com/mapfiles/ms/micons/red-dot.png'
-                burstPinURL = 'http://maps.google.com/mapfiles/ms/micons/yellow-dot.png'
-                landingPinURL = 'http://maps.google.com/mapfiles/ms/micons/red-dot.png'
-
-                kmlPaths = []
-                kmlMarkers = []
-
-                for flightResult in self.results:
-                    flightHrs, flightMins, flightSecs = tools.prettySeconds(flightResult[1][-1])
-                    thisFlightHasBurst = flightResult[7]
-
-                    kmlPath = [
-                        '<Placemark>\n<name>Simulation %d</name>\n<styleUrl>#stratoLine</styleUrl>\n<LineString>\n<coordinates>\n' % (
-                            flightResult[0])]
-
-                    pointNumber = 0
-                    for eachPoint in numpy.transpose(flightResult[2:5]):
-                        if thisFlightHasBurst:
-                            if pointNumber % 10 == 0:
-                                kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
-                        else:
-                            kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
-                        pointNumber += 1
-
-                    kmlPath.append(
-                        '</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</LineString>\n</Placemark>\n')
-
-                    kmlPaths.append(''.join(kmlPath))
-
-                    # Add balloon launch point
-                    kmlMarkers.append(
-                        '<Placemark>\n<name>Balloon Launch</name>\n<styleUrl>#launchPin</styleUrl>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
-                            numpy.transpose(flightResult[2:5])[0][1], numpy.transpose(flightResult[2:5])[0][0],
-                            numpy.transpose(flightResult[2:5])[0][2]))
-
-                    if thisFlightHasBurst:
-                        # Add balloon burst point
-                        kmlMarkers.append(
-                            '<Placemark>\n<name>Balloon burst (Simulation %d)</name>\n<styleUrl>#burstPin</styleUrl>\n<description>Burst altitude: %.0f m.' % (
-                                flightResult[0], flightResult[6]))
-                        kmlMarkers.append(
-                            '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
-                                numpy.transpose(flightResult[2:5])[flightResult[5]][1],
-                                numpy.transpose(flightResult[2:5])[flightResult[5]][0], flightResult[6]))
-
-                        # Add balloon landing point
-                        kmlMarkers.append(
-                            '<Placemark>\n<name>Payload landing (Simulation %d)</name>\n<styleUrl>#landingPin</styleUrl>\n<description>Flight time: %d hours, %d minutes and %d seconds.' % (
-                                flightResult[0], flightHrs, flightMins, flightSecs))
-                        kmlMarkers.append(
-                            '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
-                                numpy.transpose(flightResult[2:5])[-1][1], numpy.transpose(flightResult[2:5])[-1][0],
-                                numpy.transpose(flightResult[2:5])[-1][2]))
-                    else:
-                        # Add target altitude reached point
-                        kmlMarkers.append(
-                            '<Placemark>\n<name>Target altitude reached (Simulation %d)</name>\n<styleUrl>#burstPin</styleUrl>\n<description>Target altitude: %.0f m.' % (
-                                flightResult[0], flightResult[6]))
-                        kmlMarkers.append(
-                            '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
-                                numpy.transpose(flightResult[2:5])[flightResult[5]][1],
-                                numpy.transpose(flightResult[2:5])[flightResult[5]][0], flightResult[6]))
-
-                kmlToAdd = [
-                    '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">\n<Document>\n<name>Flight Simulations</name>\n<atom:author>\n<atom:name>%s</atom:name>\n</atom:author>\n' % kmlAuthor,
-                    '<Style id="landingPin">\n<IconStyle>\n<scale>1.0</scale>\n<Icon>\n<href>%s</href>\n</Icon>\n</IconStyle>\n</Style>\n' % landingPinURL,
-                    '<Style id="launchPin">\n<IconStyle>\n<scale>1.0</scale>\n<Icon>\n<href>%s</href>\n</Icon>\n</IconStyle>\n</Style>\n' % launchPinURL,
-                    '<Style id="burstPin">\n<IconStyle>\n<scale>1.0</scale>\n<Icon>\n<href>%s</href>\n</Icon>\n</IconStyle>\n</Style>\n' % burstPinURL,
-                    '<Style id="stratoLine">\n<LineStyle>\n<width>1.0</width>\n</LineStyle>\n</Style>\n',
-                    ''.join(kmlPaths),
-                    ''.join(kmlMarkers),
-                    '</Document>\n</kml>'
-                ]
-
-                if data_format in ('kmz', 'KMZ'):
-                    import zipfile, tempfile
-
-                    try:
-                        outputKml = tempfile.NamedTemporaryFile(mode='w')
-                    except IOError:
-                        logger.error('Error: cannot create a new temporary file')
-                        return
-
-                    outputKml.write(''.join(kmlToAdd))
-                    outputKml.flush()
-
-
-                    # Convert KML to KMZ by zipping it.
-                    try:
-                        import zlib
-
-                        zipCompression = zipfile.ZIP_DEFLATED
-                    except:
-                        zipCompression = zipfile.ZIP_STORED
-
-                    with zipfile.ZipFile(outputPath, 'w') as zipKmz:
-                        zipKmz.write(outputKml.name, arcname='output.kml', compress_type=zipCompression)
-                    zipKmz.close()
-                    outputKml.close()
-
-                    logger.debug(('KMZ file generated! ', self.outputFile))
-
-                else:
-                    # Write the KML file.
-
-                    try:
-                        outputKml = open(outputPath, 'w')
-                    except IOError:
-                        logger.error('Error: cannot create the output file in the given directory')
-                        return
-
-                    outputKml.write(''.join(kmlToAdd))
-                    outputKml.close()
-
-
-            elif data_format in ('csv', 'CSV', 'csv.zip', 'CSV.ZIP'):
-                # GENERATE CSV FILE OUT OF RESULTS
-
-                # Calculate how many rows we need in total
-                totalRows = 0
-                for flightResult in self.results:
-                    totalRows += len(flightResult[1])
-
-                # Columns are Flight #, Time from launch, Lat, Lon, Alt, Remarks
-                totalColumns = 6
-
-                # Add one column for the header and generate an empty matrix
-                csvMatrix = numpy.zeros((totalRows + 2) * totalColumns).reshape(totalRows + 2, totalColumns).astype(
-                    '|S100')
-                # Clear the remarks column (it was full of zeros)
-                csvMatrix[..., 5] = ''
-
-                currentPosition = 2
-                # Populate matrix with data
-                for flightResult in self.results:
-                    numberOfPoints = len(flightResult[1])
-                    thisFlightHasBurst = flightResult[7]
-
-                    # Flight number, Time, Lat, Lon, Alt
-                    for i in range(5):
-                        csvMatrix[currentPosition:currentPosition + numberOfPoints, i] = flightResult[i]
-
-                    # Remarks: Launch
-                    csvMatrix[currentPosition, 5] = 'Balloon Launch'
-
-                    if thisFlightHasBurst:
-                        # Remarks: Burst
-                        csvMatrix[currentPosition + flightResult[5], 5] = 'Balloon Burst'
-
-                        # Remarks: Landing
-                        csvMatrix[currentPosition + numberOfPoints - 1, 5] = 'Balloon Landed'
-                    else:
-                        # Remarks: Target Altitude Reached
-                        csvMatrix[currentPosition + flightResult[5], 5] = 'Balloon has reached target altitude'
-
-                    currentPosition += numberOfPoints
-
-                # Add header
-                csvMatrix[0] = [
-                    'Data generated by the ASTRA High Altitude Balloon Flight Planner - University of Southampton', '',
-                    '', '', '', '']
-
-                csvMatrix[1] = ['Simulation #', 'Time from launch [s]', 'Latitude', 'Longitude', 'Altitude [m]',
-                                'Remarks']
-
-                # Save file
-                if data_format in ('csv', 'CSV'):
-
-                    numpy.savetxt(outputPath, csvMatrix, delimiter=',', fmt='%s')
-
-                else:
-                    import zipfile, tempfile
-
-                    try:
-                        outputCsv = tempfile.NamedTemporaryFile()
-                    except IOError:
-                        logger.error('Error: cannot create a new temporary file')
-                        return
-
-                    # Create a zipped version of the file, since it's probably big (approx 150KB/simulation not compressed)
-                    numpy.savetxt(outputCsv, csvMatrix, delimiter=',', fmt='%s')
-                    outputCsv.flush()
-
-                    # Zip CSV file
-                    try:
-                        import zlib
-
-                        zipCompression = zipfile.ZIP_DEFLATED
-                    except:
-                        zipCompression = zipfile.ZIP_STORED
-
-                    with zipfile.ZipFile(outputPath, 'w') as zipCsv:
-                        zipCsv.write(outputCsv.name, arcname='ASTRA Simulation Results.csv', compress_type=zipCompression)
-                    zipCsv.close()
-                    outputCsv.close()
-
-                    logger.debug(('CSV-ZIP file generated! ', self.outputFile))
-
-
-
-            else:
-                logger.error('Output data format not understood! Is the specified extension correct?')
-
-            # Done
-            logger.debug('Output file generated.')
-
-        ######################################################
-        # Figure out which formats to output and export them #
-
-        # Extract the output format from the outputFile path.
-        fileName, fileExtension = os.path.splitext(self.outputFile)
-
-        # Remove the dot from the extension
-        fileExtension = fileExtension[1:]
-
-        # Check a folder path has not been given and, if it has, remove slash
-        if fileName[-1] == '/':
-            fileName = fileName[:-1]
-
-        if fileExtension == '':
-            # If file has no extension, store json, kml, kmz, and csv
-
+        baseName, data_format = os.path.splitext(self.outputFile)
+
+        if data_format == '':
+            # In the case that no extension is provided, use the base name as
+            # the folder name as write all types to this file
             try:
                 os.mkdir(self.outputFile)
             except OSError:
@@ -1292,30 +1299,35 @@ class flight(object):
                     logger.error('The specified output path already exists. Change it or add an extension.')
 
             for data_format in ['json', 'kml', 'kmz', 'csv', 'csv.zip']:
-                path = fileName + '/' + fileName.split('/')[-1] + '.' + data_format
-                store_data(path, data_format)
+                path = os.path.join(baseName, 'out' + '.' + data_format)
+                print(path)
+                self.write(path)
 
-        elif fileExtension == 'web':
+        elif fileExtension == '.web':
             # If file has extension web, store json, kml and csv.gz
 
             for data_format in ['json', 'kml', 'csv.zip']:
-                path = fileName + '.' + data_format
-                store_data(path, data_format)
+                path = baseName + '.' + data_format
+                print(path)
+                self.write(path)
 
         else:
             # Only store the required one
-
-            store_data(self.outputFile, fileExtension)
+            self.write(self.outputFile)
 
 
     def reset(self, keepParameters=False):
         """
         Reset the simulation.
 
-        If keepParameters is FALSE, all the parameters are deleted and the flight object is ready to be reconfigured.
-        If keepParameters is TRUE, all the results are deleted but the initial flight configuration is preserved.
-        preflight() should still be run again before performing anymore simulations.
-        Default is FALSE.
+        Parameters
+        ----------
+        keepParameters : bool (default False)
+            If FALSE, all the parameters are deleted and the flight object is
+            ready to be reconfigured. If keepParameters is TRUE, all the
+            results are deleted but the initial flight configuration is
+            preserved. preflight() should still be run again before performing
+            anymore simulations.
         """
 
         if keepParameters:
@@ -1331,11 +1343,14 @@ class flight(object):
     @profile
     def updateProgress(self, value, action):
         """
-        Update the progress file with the ratio of value and the total steps of the simulation calculated when
-        the method run() is executed.
+        Update the progress file with the ratio of value and the total steps of
+        the simulation calculated when the method run() is executed.
 
-        Note: if run() is not being used, the object's parameter _totalStepsForProgress should be defined before
-        executing this method for it to work properly.
+        Notes
+        -----
+        * if run() is not being used, the object's parameter
+        _totalStepsForProgress should be defined before executing this method
+        for it to work properly.
         """
 
         if self._progressToFile or self._debugging:

@@ -1,15 +1,10 @@
 # coding=utf-8
 
 """
-wind_space_perturbation.py
-ASTRA High Altitude Balloon Flight Planner
+This module loads a table of wind perturbations as a function of the distance
+from the sounding. They are used to perturb the wind for the purpose of
+Monte Carlo simulations.
 
-DESCRIPTION
---------------
-
-Wind Space Perturbation
-This module loads a table of wind perturbations as a function of the distance from the sounding. They are used to perturb
-the wind for the purpose of Monte Carlo simulations.
 Note: this module is only used for sounding-based flights.
 
 Data courtesy of Dr Andras Sobester
@@ -18,7 +13,8 @@ USAGE
 --------------
 
 Warning: this module is used privately and should not be used per se.
-Throughout the whole flight, only one (random) row of the tables below should be used. The rows in each table should
+Throughout the whole flight, only one (random) row of the tables below should
+be used. The rows in each table should
 correspond.
 
 

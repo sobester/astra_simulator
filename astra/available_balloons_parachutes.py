@@ -1,27 +1,22 @@
 # coding=utf-8
 
 """
-available_balloons_parachutes.py
-ASTRA High Altitude Balloon Flight Planner
+This file contains key data of all the balloons currently supported by the
+simulator.
 
-DESCRIPTION
---------------
+Data in the available_baloons_parachutes.balloons dictionary is of the form:
+    "BALLOON ID" : (weight, nominal burst diameter,
+                    Weibull lambda, Weibull k)
 
-Available Balloons and Parachutes
-This file contains key data of all the balloons currently supported by the simulator.
-The dictionary returns a tuple of four items: (weight, nominal burst diameter, weibull lambda, weibull k).
+Data in the available_balloons_parachutes.parachutes dictionary is of the form:
+    {"CHUTE ID" : A_ref}
 
 Warning: this module is used privately and should not be used per se.
 
-
-
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
-__author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
-
-# Which balloon weights are supported
-# Data explanation: "BALLOON ID" : (weight, nominal burst diameter, Weibull lambda, Weibull k)
+# Data is of the format: "BALLOON ID" : (weight, nominal burst diameter,
+#                                        Weibull lambda, Weibull k)
 balloons = {
     # Totex
     "TA10": (0.01, 0.45, 0.5045, 14.3577),
@@ -65,8 +60,7 @@ balloons = {
 
 meanToNominalBurstRatio = 1.08116
 
-# Which parachutes are supported
-# Data explanation: "CHUTE ID" : A_ref
+# Data is of the format: "CHUTE ID" : A_ref
 parachutes = {
     "RCK3": 0.26615,
     "RCK4": 0.47315,

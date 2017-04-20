@@ -1,15 +1,10 @@
 # coding=utf-8
 
 """
-drag_helium.py
 ASTRA High Altitude Balloon Flight Planner
 
-DESCRIPTION
---------------
-
-Drag Helium
-This module loads a table of drag data and transitions used to calculate deviations from standard parametrised drag
-model in Monte Carlo simulations.
+This module loads a table of drag data and transitions used to calculate
+deviations from standard parametrised drag model in Monte Carlo simulations.
 
 Data courtesy of Dr Andras Sobester
 
@@ -17,9 +12,10 @@ USAGE
 --------------
 
 Warning: this module is used privately and should not be used per se.
-Throughout the whole flight, only one (random) row of the transitions table should be used.
-Columns in the transitions table correspond to percentage deviations from original data for lowCD, highCD, transition
-and ReBand respectively.
+Throughout the whole flight, only one (random) row of the transitions table
+should be used. Columns in the transitions table correspond to percentage
+deviations from original data for lowCD, highCD, transition and ReBand
+respectively.
 
 
 University of Southampton

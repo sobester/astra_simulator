@@ -1,74 +1,19 @@
 # coding=utf-8
 
 """
-weather.py
-ASTRA High Altitude Balloon Flight Planner
+This module contains classes for modelling the weather and atmosphere.
 
-DESCRIPTION
---------------
-
-Weather Module
-This module is responsible for dealing with weather and the modelling of the atmosphere. It works closely together
-with the Simulator Module, providing it with all the atmospheric data throughout the entire simulation.
-
-This module contains the environment class, providing a common interface to all its subclasses. This allows the
-Simulator Module not to care of what kind of environment is being used. If the interface with the other objects
-is common, the Simulator Module can deal with them in exactly the same way. This approach also provides great
-flexibility for extending the atmospheric model in the future: a new environment subclass can be defined and be
-implemented very quickly in the current program, without needing to modify any code in any other module.
-
-There are two environment subclasses:
-    forecastEnvironment: responsible for a GFS-based atmospheric model
-    soundingEnvironment: responsible for an atmospheric model generated from a sounding file
-
-
-USAGE
---------------
-
-The environment class defines a common interface for the Simulator Module to deal with.
-Such interface has the following variables and methods:
-    VARIABLES
-        launchSiteLat: latitude of the launch site [deg] (type: float)
-        launchSiteLon: longitude of the launch site [deg] (type: float)
-        launchSiteElev: elevation of the launch site above Mean Sea Level [m] (type: float)
-        dateAndTime: the launch local time (type: datetime.datetime)
-        UTC_offset: the local time zone's offset from UTC, in hours. See NOTE below about automatic UTC offset
-            (type: float)
-        inflationTemperature: the ambient temperature during the balloon inflation [degC] (type: float)
-    METHODS
-        getTemperature(lat,lon,alt,time): request the temperature for the point at the given location at the given time.
-            Returns a float, temperature in [degrees Celsius]
-        getPressure(lat,lon,alt,time): request the pressure for the point at the given location at the given time.
-            Returns a float, pressure in [millibar]
-        getWindDirection(lat,lon,alt,time): request the wind direction for the point at the given location at the given time.
-            Returns a float, direction in [degrees] clockwise from north
-        getWindSpeed(lat,lon,alt,time): request the wind speed for the point at the given location at the given time.
-            Returns a float, speed in [knots]
-        getDensity(lat,lon,alt,time): request the density for the point at the given location at the given time.
-            Returns a float, density in [kg/m3]
-        getViscosity(lat,lon,alt,time): request the viscosity for the point at the given location at the given time.
-            Returns a float, viscosity in [Pa s]
-
-        Note: for all the methods above, lat [deg], lon [deg], alt [m], time [datetime.datetime].
+The environment classes providing the simulator module with all the atmospheric
+data throughout a simulation. There are two environment
+subclasses defined here:
+    forecastEnvironment : GFS-based atmospheric model
+    soundingEnvironment : atmospheric model generated from a sounding file
 
 Refer to the individual classes and subclasses for details on how to use them.
-
-NOTE: AUTOMATIC UTC OFFSET
---------------
-
-The UTC offset can be automatically retrieved for any LAND location by using Google Maps API's Time Zone service.
-By default, the UTC offset is automatically retrieved using the launch site GPS location if the UTC_offset is set to 0.
-
-See documentation for the global_tools.getUTCOffset() function for more information.
-
-
 
 University of Southampton
 Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
-
-__author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
-
 from datetime import timedelta
 import logging
 from six.moves import range
@@ -76,79 +21,91 @@ import numpy
 from scipy.interpolate import UnivariateSpline
 from . import wind_time_perturbation
 from. import wind_space_perturbation
-
 from . import global_tools as tools
 from . import GFS
+from types import MethodType
 
 # SETUP ERROR LOGGING AND DEBUGGING
-
 logger = logging.getLogger(__name__)
+
 
 class environment(object):
     """
-    This class defines a common interface for the Simulator Module to deal with.
-    Such interface has the following variables and methods:
-    VARIABLES
-        launchSiteLat: latitude of the launch site [deg] (type: float)
-        launchSiteLon: longitude of the launch site [deg] (type: float)
-        launchSiteElev: elevation of the launch site above Mean Sea Level [m] (type: float)
-        dateAndTime: the launch time (type: datetime.datetime)
-        UTC_offset: the offset in hours between the current time zone and UTC (for example, Florida in winter has a
-            UTC_offset = -5) (type: float)
-    METHODS
-        getTemperature(lat,lon,alt,time): request the temperature for the point at the given location at the given time.
-            Returns a float, temperature in [degrees Celsius]
-        getPressure(lat,lon,alt,time): request the pressure for the point at the given location at the given time.
-            Returns a float, pressure in [millibar]
-        getWindDirection(lat,lon,alt,time): request the wind direction for the point at the given location at the given time.
-            Returns a float, direction in [degrees] clockwise from north
-        getWindSpeed(lat,lon,alt,time): request the wind speed for the point at the given location at the given time.
-            Returns a float, speed in [knots]
-        getDensity(lat,lon,alt,time): request the density for the point at the given location at the given time.
-            Returns a float, density in [kg/m3]
-        getViscosity(lat,lon,alt,time): request the viscosity for the point at the given location at the given time.
-            Returns a float, viscosity in [Pa s]
+    Defines a common interface for the Simulator module.
 
-        Note: for all the methods above, lat [deg], lon [deg], alt [m], time [datetime.datetime].
+    This is a meta class that should not be instantiated directly, and is
+    provided mainly for code reuse and a uniform API for the simulator class,
+    regardless of the environment data used.
+    
+    Parameters
+    ----------
+    launchSiteLat : float
+        latitude of the launch site [deg]
+    launchSiteLon : float
+        longitude of the launch site [deg]
+    launchSiteElev : float
+        elevation of the launch site above Mean Sea Level [m]
+    dateAndTime : :obj:`datetime.datetime`
+        Date and time of launch
+    UTC_offset : float
+        the offset in hours between the current time zone and UTC
+        (for example, Florida in winter has a UTC_offset = -5)
+
+    Attributes
+    ----------
+    launchSiteLat : float
+        latitude of the launch site [deg]
+    launchSiteLon : float
+        longitude of the launch site [deg]
+    launchSiteElev : float
+        elevation of the launch site above Mean Sea Level [m]
+    dateAndTime : :obj:`datetime.datetime`
+        Date and time of launch
+    UTC_offset : float
+        The offset in hours between the current time zone and UTC. NOTE: If
+        zero, UTC offset is AUTOMATICALLY retrieved using the launch site GPS
+        location
+
+    Notes
+    -----
+    The primary base class methods that should be overridden are the 'getter'
+    functions for Temperature, Pressure, WindDirection, WindSpeed, Density,
+    Viscosity
+
+    See Also
+    --------
+    astra.global_tools.getUTCOffset
+
     """
 
     def __init__(self,
-        inflationTemperature=0.0,
-        launchSiteLat=0.0,
-        launchSiteLon=0.0,
-        launchSiteElev=0.0,
-        dateandTime=None,
-        UTC_offset=0.0,
-        debugging=False,
-        log_to_file=False):
+                 launchSiteLat,
+                 launchSiteLon,
+                 launchSiteElev,
+                 dateAndTime,
+                 inflationTemperature=0.0,
+                 UTC_offset=0.0,
+                 debugging=False,
+                 log_to_file=False):
 
         # COMMON INTERFACE
 
         # Variables
-        # Set all kwargs as attributes - could move this to AirconicsBase
+        # Set all kwargs as attributes - could move this to Base class
         self.inflationTemperature = inflationTemperature
         self.launchSiteLat = launchSiteLat
         self.launchSiteLon = launchSiteLon
         self.launchSiteElev = launchSiteElev
-        self.dateandTime = dateandTime
+        self.dateAndTime = dateAndTime
         self.UTC_offset = UTC_offset
+        self.debugging = debugging
+        self.file_logging = log_to_file
 
-        # TODO: Make these properties:
-        # Calculated parameters
-        self.getTemperature = None
-        self.getPressure = None
-        self.getWindDirection = None
-        self.getWindSpeed = None
-        self.getDensity = None
-        self.getViscosity = None
         self._UTC_time = None
 
         # Monte Carlo parameters
         self.getMCWindDirection = []
         self.getMCWindSpeed = []
-
-        self.debugging = debugging
-        self.file_logging = log_to_file
 
         self._weatherLoaded = False
 
@@ -159,76 +116,110 @@ class environment(object):
 
         if log_to_file:
             logging.basicConfig(filename='error.log',
-                            filemode='a',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
-                            level=log_lev)
+                filemode='a',
+                format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                datefmt='%H:%M:%S',
+                level=log_lev)
         else:
             logger.setLevel(log_lev)
+
+    def getTemperature(self, lat, lon, alt, time):
+        """Request the temperature for an input location and time.
+
+        Returns
+        -------
+        temperature : float
+            temperature in degrees Celsius
+        """
+        raise NotImplementedError(
+            "getTemperature method must be implemented by class {}".format(
+                type(self).__name__))
+
+    def getPressure(self, lat, lon, alt, time):
+        """request the pressure for the point at the given location at the
+        given time.
+        Returns a float, pressure in [millibar]"""
+        raise NotImplementedError(
+            "getPressure method must be implemented by class {}".format(
+                type(self).__name__))
+
+    def getDensity(self, lat, lon, alt, time):
+        """request the density for the point at the given location at the
+        given time.
+        Returns a float, density in [kg/m3]"""
+        raise NotImplementedError(
+            "getDensity method must be implemented by class {}".format(
+            type(self).__name__))
+
+    def getViscosity(self, lat, lon, alt, time):
+        """getViscosity(): request the viscosity for the point
+        at the given location at the given time.
+        Returns a float, viscosity in [Pa s]"""
+        raise NotImplementedError(
+            "getViscosity method must be implemented by class {}".format(
+            type(self).__name__))
+
+    def getWindSpeed(self, *args):
+        """request the wind speed for the point at the given location at the
+        given time.
+        Returns a float, speed in [knots]"""
+        raise NotImplementedError(
+            "getWindSpeed method must be implemented by class {}".format(
+                type(self).__name__))
+
+    def getWindDirection(self, *args):
+        """getWindDirection(lat,lon,alt,time): request the wind direction for
+        the point at the given location at the given time.
+        Returns a float, direction in [degrees] clockwise from north"""
+        raise NotImplementedError(
+            "getWindDirection method must be implemented by class {}".format(
+                type(self).__name__))
 
 
 class soundingEnvironment(environment):
     """
-    The soundingEnvironment class is responsible of generating a sounding-based atmospheric model.
+    Class for generating an atmospheric model from sounding data.
 
-    USAGE
-    --------------
+    Instantiate a new soundingEnvironment object if you are providing a
+    sounding file to generate an atmospheric model. Accepted formats for
+    sounding files are .ftr and .sounding .
 
-    Instantiate a new soundingEnvironment object if you are providing a sounding file to generate an atmospheric model.
-    Accepted formats for sounding files are .ftr and .sounding .
+    Parameters
+    ----------
+    launchSiteLat : float
+        latitude of the launch site [deg]
+    launchSiteLon : float
+        longitude of the launch site [deg]
+    launchSiteElev : float
+        elevation of the launch site above Mean Sea Level [m]
+    dateAndTime : :obj:`datetime.datetime`
+        The launch time
+    UTC_offset : float
+        the offset in hours between the current time zone and UTC (for example,
+        Florida in winter has a UTC_offset = -5)
+    inflationTemperature : float
+        the ambient temperature during the balloon inflation [degC]
+    distanceFromSounding : float
+        the distance between the launch site and the location where the 
+        sounding file was recorded [km]
+    timeFromSounding : float
+        the duration between the balloon launch and the time when the sounding
+        file was recorded [hours]
+    [maxAltitude] : float (default 50999m)
+        the upper altitude limit below which the atmosphere is modelled. [m]
+    [debug] : bool, optional (default False)
+        If TRUE, all the information available will be logged
+    [log_to_file] : bool, optional (default False)
+         If true, all error and debug logs will be stored in an error.log file
 
-    The new object can be instantiated and initialized using the following syntax:
+    :Example:
 
-        import weather
-        my_sounding_atmosphere = weather.soundingEnvironment()
+        >>> from datetime import datetime
+        >>> import weather
 
-    Upon instantiation, two optional parameters can be passed: debugging and log_to_file. By default they are both FALSE.
-    If log_to_file is set to TRUE, all error and debug logs will be stored in a file called error.log.
-    If FALSE, all error and debug logs will be directly displayed on the terminal or command line.
-    If debugging is TRUE, all the information available will be logged. Otherwise, only errors will be logged.
-
-    Once the object has been initialized, it needs to be configured with all the environmental data required.
-    The following parameters need to be defined (parameters in [brackets] are optional):
-        launchSiteLat: latitude of the launch site [deg] (type: float)
-        launchSiteLon: longitude of the launch site [deg] (type: float)
-        launchSiteElev: elevation of the launch site above Mean Sea Level [m] (type: float)
-        dateAndTime: the launch time (type: datetime.datetime)
-        UTC_offset: the offset in hours between the current time zone and UTC (for example, Florida in winter has a
-            UTC_offset = -5) (type: float)
-        inflationTemperature: the ambient temperature during the balloon inflation [degC] (type: float)
-        distanceFromSounding: the distance between the launch site and the location where the sounding file was
-            recorded [km] (type: float)
-        timeFromSounding: the duration between the balloon launch and the time when the sounding file was recorded
-            [hours] (type: float)
-        [maxAltitude]: the upper altitude limit below which the atmosphere is modelled. Default is 50999m [m] (type: float)
-
-    Once all the parameters have been set, the sounding file can then be loaded and the atmosphere modelled.
-    The standard syntax to load the sounding file is the following:
-
-        my_sounding_atmosphere.loadSounding(filePath)
-
-    where filePath is a string containing either the relative or the absolute path to the sounding file.
-
-    If the loadSounding(filePath) method completes successfully, no errors are thrown and the soundingForecast object
-    is now ready for used.
-
-    Other methods available:
-        perturbWind()   Perform a wind perturbation for the purpose of Monte Carlo simulations.
-
-    Refer to the error.log file for any errors.
-
-
-    EXAMPLE
-    --------------
-
-    A typical usage of the soundingEnvironment object would be as follows:
-
-        from datetime import datetime
-        import weather
-
-        my_sounding_atmosphere = weather.soundingEnvironment()
-        my_sounding_atmosphere.launchSiteLat = 50.2245
-        my_sounding_atmosphere.launchSiteLon = -5.3069
+        >>> my_sounding_atmosphere = weather.soundingEnvironment()
+        >>> my_sounding_atmosphere.launchSiteLat = 50.2245
+        >>> my_sounding_atmosphere.launchSiteLon = -5.3069
         my_sounding_atmosphere.launchSiteElev = 60
         my_sounding_atmosphere.dateAndTime = datetime.now()
         my_sounding_atmosphere.UTC_offset = 3
@@ -240,13 +231,33 @@ class soundingEnvironment(environment):
 
     """
 
-    def __init__(self, debugging=False, log_to_file=False):
-        """
-        Initialize the soundingEnvironment object
+    def __init__(self,
+                 launchSiteLat,
+                 launchSiteLon,
+                 launchSiteElev,
+                 dateAndTime,
+                 soundingFile,
+                 timeFromSounding,
+                 distanceFromSounding,
+                 inflationTemperature=0.0,
+                 UTC_offset=0.,
+                 debugging=False,
+                 log_to_file=False):
+        """Initialize the soundingEnvironment object.
+
+        See class documentation.
         """
 
         # Run the environment class initialization first
-        environment.__init__(self, debugging, log_to_file)
+        super(soundingEnvironment, self).__init__(
+            inflationTemperature=inflationTemperature,
+            launchSiteLat=launchSiteLat,
+            launchSiteLon=launchSiteLon,
+            launchSiteElev=launchSiteElev,
+            dateAndTime=dateandTime,
+            UTC_offset=UTC_offset,
+            debugging=debugging,
+            log_to_file=log_to_file) 
 
         # Initialize extra sounding-specific variables
         self.distanceFromSounding = 0.0
@@ -254,22 +265,27 @@ class soundingEnvironment(environment):
         self.maxAltitude = 50999
 
         self._interpolationPrecision = 200
-
+        self.loadSounding(soundingFile)
 
     def loadSounding(self, soundingFile):
-        """
-        Load the sounding file and generate the atmospheric model.
+        """Load the sounding file and generate the atmospheric model.
 
-        The argument soundingFile should be a string containing either the relative or the absolute path to the
-        sounding file.
+        Data is validated upon loading. Once this is done, cubic spline
+        (scipy.interpolate.UnivariateSpline) interpolator functions are then
+        stored as the getTemperature, getPressure, getWindDirection,
+        getWindSpeed, getDensity and getViscosity methods.
 
-        This method first reads the file, loads all the data, validates it, and stores it.
-        Once this is done, all the data is interpolated (cubic spline interpolation) and the interpolators are then
-        stored in the getTemperature, getPressure, getWindDirection, getWindSpeed, getDensity and getViscosity variables.
-        This allows a user to request the value of any of the variables by calling the get... methods.
+        Parameters
+        ----------
+        soundingFile : string
+            the relative or the absolute path to the sounding file.
 
-        Note: since sounding files only provide information for one location and at one point in time, the lat, lon and
-        time arguments for the get... methods are optional.
+        
+        Notes
+        -----
+        * since sounding files only provide information for one location and at 
+          one point in time, the lat, lon and time arguments for the get...
+          methods are optional.
         """
 
         def process_sounding_data(PRESS, HGHT, TEMP, DRCT, SKNT):
@@ -312,11 +328,12 @@ class soundingEnvironment(environment):
 
             logger.debug('NaN entries removed.')
 
-            # _______________________________________________________________________________________________ #
-            # Add missing data if launch site elevation or max altitude are out of sounding bounds
+            # _______________________________________________________________ #
+            # Add missing data if launch site elevation or max altitude are out
+            # of sounding bounds
 
-            # If the elevation is lower than the lower bound of data, copy the lowest data available and use it for
-            # the launch site elevation.
+            # If the elevation is lower than the lower bound of data, copy the
+            # lowest data available and use it for the launch site elevation.
             if self.launchSiteElev < HGHT[0]:
                 HGHT = numpy.insert(HGHT, 0, self.launchSiteElev)
                 PRESS = numpy.insert(PRESS, 0, PRESS[0])
@@ -325,13 +342,16 @@ class soundingEnvironment(environment):
                 SKNT = numpy.insert(SKNT, 0, SKNT[0])
                 logger.debug('Launch site elevation out of bounds. Low altitude data generated.')
 
-            # If the maxAltitude is higher than the upper bound of data, fill the missing altitude levels in with ISA data
+            # If the maxAltitude is higher than the upper bound of data, fill
+            # the missing altitude levels in with ISA data
             if self.maxAltitude > HGHT[-1]:
-                newHeights = numpy.arange(HGHT[-1] + 1, self.maxAltitude + 1, (self.maxAltitude - HGHT[-1] - 1) / 20.)
+                newHeights = numpy.arange(HGHT[-1] + 1, self.maxAltitude + 1,
+                    (self.maxAltitude - HGHT[-1] - 1) / 20.)
                 HGHTTEMP = numpy.append(HGHT, newHeights[3:])
                 for newTempHeight in newHeights[3:]:
                     # Calculate new temperatures and pressures.
-                    _, newTemp, _, newPress, _ = tools.ISAatmosphere(altitude=tools.m2feet(newTempHeight))
+                    _, newTemp, _, newPress, _ = tools.ISAatmosphere(
+                        altitude=tools.m2feet(newTempHeight))
                     TEMP = numpy.append(TEMP, newTemp)
                     PRESS = numpy.append(PRESS, newPress)
 
@@ -350,21 +370,27 @@ class soundingEnvironment(environment):
                 HGHTTEMP = HGHT
                 HGHTSKNT = HGHT
 
-            # _______________________________________________________________________________________________ #
+            # _______________________________________________________________ #
 
             # Check whether all fields have data, otherwise fill up vectors with NaN
-            if numpy.size(HGHT) == 0 or numpy.size(TEMP) == 0 or numpy.size(PRESS) == 0 or numpy.size(
-                    DRCT) == 0 or numpy.size(SKNT) == 0:
+            if numpy.size(HGHT) == 0 or numpy.size(TEMP) == 0 or\
+                numpy.size(PRESS) == 0 or numpy.size(DRCT) == 0 or\
+                numpy.size(SKNT) == 0:
                 logger.error('There was a problem while processing the sounding.')
                 return False
 
             # Interpolate data
             logger.debug('Beginning interpolation...')
 
-            temperatureInterpolation = UnivariateSpline(HGHTTEMP, TEMP, s=self._interpolationPrecision)
-            pressureInterpolation = UnivariateSpline(HGHTTEMP, PRESS, s=self._interpolationPrecision)
-            windDirectionInterpolation = UnivariateSpline(HGHT, DRCT, s=self._interpolationPrecision)
-            windSpeedInterpolation = UnivariateSpline(HGHTSKNT, SKNT, s=self._interpolationPrecision)
+            # TODO: Fix this part, it's unreadable
+            temperatureInterpolation = UnivariateSpline(HGHTTEMP, TEMP,
+                s=self._interpolationPrecision)
+            pressureInterpolation = UnivariateSpline(HGHTTEMP, PRESS,
+                s=self._interpolationPrecision)
+            windDirectionInterpolation = UnivariateSpline(HGHT, DRCT,
+                s=self._interpolationPrecision)
+            windSpeedInterpolation = UnivariateSpline(HGHTSKNT, SKNT,
+                s=self._interpolationPrecision)
 
             def getTemperature(*args):
                 if len(args) == 1:
@@ -418,8 +444,12 @@ class soundingEnvironment(environment):
                     return self.getPressure(args[0]) * 100 * AirMolecMass / (
                         GasConstant * tools.c2kel(self.getTemperature(args[0])))
                 elif len(args) == 4:
-                    return self.getPressure(args[0], args[1], args[2], args[3]) * 100 * AirMolecMass / (
-                        GasConstant * tools.c2kel(self.getTemperature(args[0], args[1], args[2], args[3])))
+                    return self.getPressure(args[0], args[1], args[2], args[3])\
+                        * 100 * AirMolecMass / (GasConstant * tools.c2kel(
+                            self.getTemperature(args[0],
+                                                args[1],
+                                                args[2],
+                                                args[3])))
                 else:
                     return numpy.nan
 
@@ -431,7 +461,7 @@ class soundingEnvironment(environment):
                     vcP = Mu0 * TTO * TR
                     return vcP / 1000.
                 elif len(args) == 4:
-                    tempRankine = tools.c2kel(self.getTemperature(args[0], args[1], args[2], args[3])) * (9. / 5)
+                    tempRankine = tools.c2kel(self.getTemperature(args[0],args[1], args[2], args[3])) * (9. / 5)
                     TTO = (tempRankine / standardTempRankine) ** 1.5 # T/TO [Rankine/Rankine]
                     TR = ((0.555 * standardTempRankine) + C) / ((0.555 * tempRankine) + C)
                     vcP = Mu0 * TTO * TR
@@ -447,14 +477,16 @@ class soundingEnvironment(environment):
             return True
 
         if self.UTC_offset == 0:
-            self.UTC_offset = tools.getUTCOffset(self.launchSiteLat,self.launchSiteLon,self.dateAndTime)
+            self.UTC_offset = tools.getUTCOffset(self.launchSiteLat,
+                self.launchSiteLon,self.dateAndTime)
             logger.debug('Fetched time zone data about the launch site: UTC offset is %f hours' % self.UTC_offset)
 
         self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
         logger.debug('Using UTC time %s' % self._UTC_time.strftime('%d/%m/%y %H:%M'))
 
         if soundingFile[-3:] == 'ftr':
-            # READ THE .FTR INPUT FILE AND PASS ITS DATA TO THE process_sounding_data(...) METHOD.
+            # READ THE .FTR INPUT FILE AND PASS ITS DATA TO THE
+            # process_sounding_data(...) METHOD.
 
             # Try to open the file
             try:
@@ -505,7 +537,8 @@ class soundingEnvironment(environment):
 
 
         elif soundingFile[-8:] == 'sounding':
-            # READ THE .SOUNDING INPUT FILE AND PASS ITS DATA TO THE process_sounding_data(...) METHOD.
+            # READ THE .SOUNDING INPUT FILE AND PASS ITS DATA TO THE
+            # process_sounding_data(...) METHOD.
 
             # Try to open the file
             try:
@@ -576,10 +609,12 @@ class soundingEnvironment(environment):
         """
         Perturb the wind profiles for the purpose of Monte Carlo simulations.
 
-        Given the numberOfFlights, this method generates N different perturbed wind profiles, where N = numberOfFlights,
-        and stores them in the getMCWindDirection and getMCWindSpeed lists.
-        The perturbation is based on the distance and time from sounding and is performed by picking a random experimentally-
-        measured perturbation and applying it to each wind profile.
+        Given the numberOfFlights, this method generates N different perturbed
+        wind profiles, where N = numberOfFlights, and stores them in the
+        getMCWindDirection and getMCWindSpeed lists. The perturbation is based
+        on the distance and time from sounding and is performed by picking a
+        random experimentally-measured perturbation and applying it to each
+        wind profile.
 
         Wind data should then be requested using the following syntax:
 
@@ -600,7 +635,8 @@ class soundingEnvironment(environment):
 
         def make_perturbedWind(iDevTime, iDevSpace, randomChance, resultType=None):
             """
-            Constructor function responsible of applying perturbations to wind profiles and returning closure functions.
+            Constructor function responsible for applying perturbations to wind
+            profiles and returning closure functions.
             """
 
             # Interpolate the deviations
@@ -623,7 +659,8 @@ class soundingEnvironment(environment):
                     return numpy.nan
 
                 # Convert non-perturbed wind direction and speed to u- and v-components
-                UKts, VKts = tools.dirspeed2uv(self.getWindDirection(altitude), self.getWindSpeed(altitude))
+                UKts, VKts = tools.dirspeed2uv(self.getWindDirection(altitude),
+                    self.getWindSpeed(altitude))
 
                 # Apply the time perturbation
                 if randomChance[0] < 0.5:
@@ -670,114 +707,90 @@ class soundingEnvironment(environment):
             randChance = numpy.random.random(4)
 
             # Perturb and store
-            self.getMCWindDirection.append(make_perturbedWind(devTime, devSpace, randChance, 'direction'))
-            self.getMCWindSpeed.append(make_perturbedWind(devTime, devSpace, randChance, 'speed'))
+            self.getMCWindDirection.append(make_perturbedWind(devTime,
+                devSpace, randChance, 'direction'))
+            self.getMCWindSpeed.append(make_perturbedWind(devTime, devSpace,
+                randChance, 'speed'))
 
 
 class forecastEnvironment(environment):
     """
-    The forecastEnvironment class is responsible of downloading weather forecast data from the GFS and generating a
-    forecast-based atmospheric model.
+    Class responsible for downloading weather forecast data from the Global
+    Forecast System (GFS) and generating a forecast-based atmospheric model.
 
-    USAGE
-    --------------
+    Parameters
+    ----------
+    launchSiteLat : float
+        latitude of the launch site [deg]
+    launchSiteLon : float
+        longitude of the launch site [deg]
+    launchSiteElev : float
+        elevation of the launch site above Mean Sea Level [m]
+    dateAndTime : :obj:`datetime.datetime`
+        The launch time
+    UTC_offset : float
+        the offset in hours between the current time zone and UTC (for example,
+        Florida in winter has a UTC_offset = -5)
+    inflationTemperature : float
+        the ambient temperature during the balloon inflation [degC]
+    forceNonHD : bool (default False)
+        if TRUE, the weather forecast download will be forced to a lower
+        resolution (i.e. 1deg x 1deg)
+    [debug] : bool, optional (default False)
+        If TRUE, all the information available will be logged
+    [log_to_file]: bool, optional (default False)
+         If true, all error and debug logs will be stored in an error.log file
 
-    Instantiate a new forecastEnvironment object if you wish to download weather information from the NOAA's Global
-    Forecast System (more information can be found on http://nomads.ncep.noaa.gov/ )
+    See Also
+    --------
+    astra.GFS
 
-    The new object can be instantiated and initialized using the following syntax:
+    Notes
+    -----
+    * The simulator automatically switches to non-HD forecast if the amount of
+    data requested is too high.
 
-    import weather
-    my_forecast_atmosphere = weather.forecastEnvironment(debugging=False)
+    :Example:
+    
+        >>> from datetime import datetime, timedelta
+        >>> import weather
 
-    Upon instantiation, two optional parameters can be passed: debugging and log_to_file. By default they are both FALSE.
-    If log_to_file is set to TRUE, all error and debug logs will be stored in a file called error.log.
-    If FALSE, all error and debug logs will be directly displayed on the terminal or command line.
-    If debugging is TRUE, all the information available will be logged
-
-    Once the object has been initialized, it needs to be configured with all the environmental data required.
-    The following parameters need to be defined (there are no optional parameters):
-        launchSiteLat: latitude of the launch site [deg] (type: float)
-        launchSiteLon: longitude of the launch site [deg] (type: float)
-        launchSiteElev: elevation of the launch site above Mean Sea Level [m] (type: float)
-        dateAndTime: the launch time (type: datetime.datetime)
-        UTC_offset: the offset in hours between the current time zone and UTC (for example, Florida in winter has a
-            UTC_offset = -5) (type: float)
-        forceNonHD: if TRUE, the weather forecast download will be forced to be not HD (i.e. 1deg x 1deg). Default FALSE
-
-    Once all the parameters have been set, the forecast data can be downloaded from the GFS and the atmosphere modelled.
-
-    The methods available to perform these operations are the following:
-        loadForecast()      create a link to the Global Forecast System and download the required atmospheric data.
-             Once the data has been downloaded, altitude data is generated and interpolated. The processed data is then
-             prepared to be used with standard environment get... methods. This is enough for the environment to be
-             ready for a deterministic flight simulation. Returns TRUE if successful.
-        perturbWind()       perform a wind perturbation for the purpose of Monte Carlo simulations. Currently not
-             implemented. Note: this method should only be called AFTER loadForecast() has been performed.
-
-    The standard syntax to create the GFS link and download the data is the following:
-
-        my_forecast_atmosphere.loadForecast()
-
-    This downloads all the required atmospheric data and processes it for it to be ready to use.
-    Refer to the GFS Module documentation for more information about the GFS link and the features and limitations of
-    this system.
-    loadForecast() returns TRUE is the download and processing was successful, FALSE otherwise.
-
-    Refer to the error.log file for any errors.
-
-
-    NOTE
-    --------------
-    forceNonHD limits the forecast download to non-HD only.
-    This is NOT recommended, since the definition of the weather forecast is much better in HD.
-    It's important to note that the simulator automatically switches to non-HD forecast if the amount of data requested
-    is too high.
-
-
-    EXAMPLE
-    --------------
-
-    A typical usage of the forecastEnvironment object would be as follows:
-
-    from datetime import datetime, timedelta
-    import weather
-
-    my_forecast_atmosphere = weather.soundingEnvironment()
-    my_forecast_atmosphere.launchSiteLat = 50.2245
-    my_forecast_atmosphere.launchSiteLon = -5.3069
-    my_forecast_atmosphere.launchSiteElev = 60
-    my_forecast_atmosphere.dateAndTime = datetime.now() + timedelta(days=1)
-    my_forecast_atmosphere.UTC_offset = 3
-
-
-    my_forecast_atmosphere.loadForecast()
+        >>> my_forecast_atmosphere = weather.forecastEnvironment()
+        >>> my_forecast_atmosphere.launchSiteLat = 50.2245
+        >>> my_forecast_atmosphere.launchSiteLon = -5.3069
+        >>> my_forecast_atmosphere.launchSiteElev = 60
+        >>> my_forecast_atmosphere.dateAndTime = datetime.now() + timedelta(days=1)
+        >>> my_forecast_atmosphere.UTC_offset = 3
+        >>> my_forecast_atmosphere.loadForecast()
 
     """
 
     def __init__(self,
+                 launchSiteLat,
+                 launchSiteLon,
+                 launchSiteElev,
+                 dateAndTime,
+                 UTC_offset=0,
                  inflationTemperature=0.0,
-                 launchSiteLat=0.0,
-                 launchSiteLon=0.0,
-                 launchSiteElev=0.0,
-                 dateandTime=None,
-                 UTC_offset=0.0,
                  forceNonHD=False,
                  maxFlightTime=18000,
-                 debugging=False, log_to_file=False):
+                 debugging=False,
+                 log_to_file=False,
+                 progressHandler=None):
         """
         Initialize the forecastEnvironment object
         """
 
         # Run the environment class initialization first
-        super(forecastEnvironment, self).__init__(inflationTemperature=inflationTemperature,
-                                                  launchSiteLat=launchSiteLat,
-                                                  launchSiteLon=launchSiteLon,
-                                                  launchSiteElev=launchSiteElev,
-                                                  dateandTime=dateandTime,
-                                                  UTC_offset=UTC_offset,
-                                                  debugging=debugging,
-                                                  log_to_file=log_to_file)
+        super(forecastEnvironment, self).__init__(
+            inflationTemperature=inflationTemperature,
+            launchSiteLat=launchSiteLat,
+            launchSiteLon=launchSiteLon,
+            launchSiteElev=launchSiteElev,
+            dateAndTime=dateAndTime,
+            UTC_offset=UTC_offset,
+            debugging=debugging,
+            log_to_file=log_to_file)
 
         # Initialize extra forecast-specific variables
         self.forceNonHD = forceNonHD
@@ -785,40 +798,60 @@ class forecastEnvironment(environment):
 
         self._GFSmodule = None
 
+        self.loadForecast(progressHandler)
+
     def loadForecast(self, progressHandler=None):
         """
-        Create a link to the Global Forecast System and download the required atmospheric data.
-        Once the data has been downloaded, altitude data is generated and interpolated.
-        The processed data is then prepared to be used with standard environment get... methods.
+        Create a link to the Global Forecast System and download the required
+        atmospheric data.
 
-        Returns TRUE if successful.
+        Once the data has been downloaded, altitude data is generated and
+        interpolated. The processed data is then prepared to be used with
+        standard environment get... methods.
+
+        Parameters
+        ----------
+        progressHandler : function
+            Returns progress 
+
+        Returns
+        -------
+        status : TRUE if successful.
         """
 
         # Data validation
         if self._weatherLoaded:
-            logger.warning('The weather was already loaded. All data will be overwritten.')
+            logger.warning(
+                'The weather was already loaded. All data will be overwritten.')
 
         if self.launchSiteLat == 0.0:
-            logger.debug('The launch site latitude is set to 0! Are you sure this is correct?')
+            logger.debug(
+                'The launch site latitude is set to 0!')
         if self.launchSiteLon == 0.0:
-            logger.debug('The launch site longitude is set to 0! Are you sure this is correct?')
+            logger.debug(
+                'The launch site longitude is set to 0!')
         if self.dateAndTime is None:
-            logger.error('The flight date and time has not been set and is required!')
+            raise ValueError(
+                'The flight date and time has not been set and is required!')
             return
 
         if self.UTC_offset == 0:
-            self.UTC_offset = tools.getUTCOffset(self.launchSiteLat,self.launchSiteLon,self.dateAndTime)
+            self.UTC_offset = tools.getUTCOffset(
+                self.launchSiteLat,self.launchSiteLon,self.dateAndTime)
             logger.debug('Fetched time zone data about the launch site: UTC offset is %f hours' % self.UTC_offset)
 
         self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
         logger.debug('Using UTC time %s' % self._UTC_time.strftime('%d/%m/%y %H:%M'))
 
         # Setup the GFS link
-        self.handler = GFS.GFS_Handler(self.launchSiteLat, self.launchSiteLon, self._UTC_time,
-                                       HD=self.forceNonHD is False,
-                                       forecast_duration=int(self.maxFlightTime / 3600.), debugging=self.debugging,
-                                       log_to_file=self.file_logging)
-        self._GFSmodule = self.handler
+        self._GFSmodule = GFS.GFS_Handler(self.launchSiteLat,
+                                          self.launchSiteLon,
+                                          self._UTC_time,
+                                          HD=(not self.forceNonHD),
+                                          forecast_duration=int(
+                                            self.maxFlightTime / 3600.),
+                                          debugging=self.debugging,
+                                          log_to_file=self.file_logging)
 
         # Connect to the GFS and download data
         if self._GFSmodule.downloadForecast(progressHandler):
@@ -832,25 +865,27 @@ class forecastEnvironment(environment):
 
 
         # Linearly interpolate all data downloaded from the GFS
-        pressureInterpolation, temperatureInterpolation, windDirectionInterpolation, windSpeedInterpolation = self._GFSmodule.interpolateData(
-            'press', 'temp', 'windrct', 'windspd')
+        pressureInterpolation, temperatureInterpolation,\
+            windDirectionInterpolation, windSpeedInterpolation = \
+                self._GFSmodule.interpolateData('press',
+                                                'temp',
+                                                'windrct',
+                                                'windspd')
 
-        self.getPressure = lambda lat, lon, alt, time: float(pressureInterpolation(lat, lon, alt,
-                                                                                   self._GFSmodule.getGFStime(
-                                                                                       time - timedelta(
-                                                                                           seconds=self.UTC_offset * 3600))))
-        self.getTemperature = lambda lat, lon, alt, time: float(temperatureInterpolation(lat, lon, alt,
-                                                                                         self._GFSmodule.getGFStime(
-                                                                                             time - timedelta(
-                                                                                                 seconds=self.UTC_offset * 3600))))
-        self.getWindDirection = lambda lat, lon, alt, time: float(windDirectionInterpolation(lat, lon, alt,
-                                                                                             self._GFSmodule.getGFStime(
-                                                                                                 time - timedelta(
-                                                                                                     seconds=self.UTC_offset * 3600))))
-        self.getWindSpeed = lambda lat, lon, alt, time: float(windSpeedInterpolation(lat, lon, alt,
-                                                                                     self._GFSmodule.getGFStime(
-                                                                                         time - timedelta(
-                                                                                             seconds=self.UTC_offset * 3600))))
+        self.getPressure = lambda lat, lon, alt, time: float(
+            pressureInterpolation(lat, lon, alt, self._GFSmodule.getGFStime(
+                time - timedelta(seconds=self.UTC_offset * 3600)))
+            )
+        self.getTemperature = lambda lat, lon, alt, time: float(
+            temperatureInterpolation(lat, lon, alt, self._GFSmodule.getGFStime(
+                time - timedelta(seconds=self.UTC_offset * 3600)))
+            )
+        self.getWindDirection = lambda lat, lon, alt, time: float(
+            windDirectionInterpolation(lat, lon, alt, self._GFSmodule.getGFStime(
+                time - timedelta(seconds=self.UTC_offset * 3600))))
+        self.getWindSpeed = lambda lat, lon, alt, time: float(
+            windSpeedInterpolation(lat, lon, alt, self._GFSmodule.getGFStime(
+                time - timedelta(seconds=self.UTC_offset * 3600))))
 
         # Extra definitions for derived quantities (density and viscosity)
         AirMolecMass = 0.02896
@@ -859,8 +894,10 @@ class forecastEnvironment(environment):
         Mu0 = 0.01827 # Mu 0 (15 deg) [cP]
         C = 120 # Sutherland's Constant
 
-        self.getDensity = lambda lat, lon, alt, time: self.getPressure(lat, lon, alt, time) * 100 * AirMolecMass / (
-            GasConstant * tools.c2kel(self.getTemperature(lat, lon, alt, time)))
+        self.getDensity = lambda lat, lon, alt, time: \
+            self.getPressure(lat, lon, alt, time) * 100 * AirMolecMass / (GasConstant * 
+                tools.c2kel(self.getTemperature(lat, lon, alt, time))
+            )
 
         def viscosity(lat, lon, alt, time):
             tempRankine = tools.c2kel(self.getTemperature(lat, lon, alt, time)) * (9. / 5)
@@ -878,12 +915,11 @@ class forecastEnvironment(environment):
         """
         Perform a wind perturbation for the purpose of Monte Carlo simulations.
 
-        Note: this method should only be called AFTER loadForecast() has been performed.
+        Note: this method should only be called AFTER loadForecast() has been
+        performed.
         """
-
         # For the time being, just return the standard un-perturbed forecast.
-        # ### MODIFY HERE TO ADD WIND PERTURBATION TO FORECAST ###
-
+        # TODO: MODIFY HERE TO ADD WIND PERTURBATION TO FORECAST
         if not self._weatherLoaded:
             logger.error('Error: the weather has not been loaded yet! Wind cannot be perturbed.')
             return

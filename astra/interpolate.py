@@ -1,61 +1,18 @@
 # coding=utf-8
 
 """
-interpolate.py
-ASTRA High Altitude Balloon Flight Planner
+This module defines the class Linear4DInterpolator used to interpolate data
+from the Global Forecast System.
 
-DESCRIPTION
---------------
+The Linear4DInterpolator is a simple 4D linear interpolator, designed to work
+on rectangular grids only (they don't need to be necessarily uniform).
+Linear4DInterpolator essentially isolates the 4D hyper-tetrahedron inside
+which the requested point lies and performs a quadrilinear interpolation using
+the 16 vertices of that hyper-tetrahedron only.
 
-Interpolation Module
-This module defines the class Linear4DInterpolator used to interpolate data from the Global Forecast System.
-
-The Linear4DInterpolator is a simple 4D linear interpolator, designed to work on rectangular grids only (they don't
-need to be necessarily uniform).
-Linear4DInterpolator essentially isolates the 4D hyper-tetrahedron inside which the requested point lies and performs
-a quadrilinear interpolation using the 16 vertices of that hyper-tetrahedron only.
-
-This method has proven much faster than scipy's interpolate.LinearNDInterpolator, which is based on Qhull's
-triangulation method, very slow on rectangular grids.
-
-Although this implementation of the interpolator has been specifically designed for use with the Global Forecast System
-(and therefore expects latitude,longitude,pressure,time coordinates), it can actually be used with any 4D rectangular
-grid of data, provided that the appropriate data map is passed (see below).
-
-For more information about quadrilinear interpolation, see http://en.wikipedia.org/wiki/Trilinear_interpolation .
-The same concept can be extended to 4 dimensions.
-
-
-USAGE
---------------
-
-1. INITIALIZATION
-The standard syntax to instantiate and initialize a Linear4DInterpolator object is as follows:
-    myInterpolator = Linear4DInterpolator(my4DMatrix,[axis0map,axis1map,axis2map,axis3map,axis0dict,axis1dict,axis2dict,
-    axis3dict])
-
-Instantiate a new Linear4DInterpolator object by providing it with the following parameters:
-    data            the 4D matrix containing data to be interpolated
-    data_map        a list of four lists and four dictionaries, containing the real world values corresponding to each
-                    data matrix axis and their reverse mapping dictionaries
-                    For example, for a 3x2x4x1 matrix, coordinates should be a list of four lists and four dictionaries,
-                    the first one being a list of the coordinates corresponding to the 3 'rows' of the first axis, the
-                    second one a list of the coordinates corresponding to the 2 'rows' of the second axis, etc.
-                    Then, the first dictionary should contain a map between real world values and 'row' number for the
-                    first axis (real world value is the dictionary's key and the row number is the corresponding value),
-                    and so on.
-                    Note: to make sure this is formatted correctly, use the GFS.GFS_Map to prepare the mapping and then
-                    use its mapCoordinates() method to generate the variable to be used here as the map input.
-                    These are used for correct interpolation.
-
-
-2. CALLING - DATA REQUEST
-Call the object to request data for a specific location. When calling the object, you MUST provide 4 arguments
-corresponding to latitude, longitude, pressure and time.
-Returns a float with the interpolated value at the given location.
-
-The standard syntax to request data is as follows:
-    myInterpolator(lat,lon,pressure,time)
+This method has proven much faster than scipy's
+interpolate.LinearNDInterpolator, which is based on Qhull's triangulation
+method.
 
 
 University of Southampton
@@ -71,10 +28,53 @@ import numpy
 
 class Linear4DInterpolator(object):
     """
-    The Linear4DInterpolator is a simple 4D linear interpolator, designed to work on rectangular grids only (they don't
-    need to be necessarily uniform).
-    Linear4DInterpolator essentially isolates the 4D hyper-tetrahedron inside which the requested point lies and
-    performs a quadrilinear interpolation using the 16 vertices of that hyper-tetrahedron only.
+    The Linear4DInterpolator is a simple 4D linear interpolator, designed to
+    work on rectangular grids only (they don't need to be necessarily uniform).
+
+    Linear4DInterpolator essentially isolates the 4D hyper-tetrahedron inside
+    which the requested point lies and performs a quadrilinear interpolation
+    using the 16 vertices of that hyper-tetrahedron only. This method has
+    proven much faster than scipy's interpolate.LinearNDInterpolator, which is
+    based on Qhull's triangulation method, very slow on rectangular grids.
+
+    Parameters
+    ----------
+    data : numpy array (4D)
+        the 4D matrix containing data to be interpolated
+    data_map : list
+        contains four lists and four dictionaries, formed of the real world
+        values corresponding to each data matrix axis and their reverse mapping
+        dictionaries. For example, for a 3x2x4x1 matrix, coordinates should be
+        a list of four lists and four dictionaries, the first one being a list
+        of the coordinates corresponding to the 3 'rows' of the first axis, the
+        second one a list of the coordinates corresponding to the 2 'rows' of
+        the second axis, etc. Then, the first dictionary should contain a map
+        between real world values and 'row' number for the first axis (real
+        world value is the dictionary's key and the row number is the
+        corresponding value), and so on.
+        Note: to make sure this is formatted correctly, use the GFS.GFS_Map to
+        prepare the mapping and then use its mapCoordinates() method to
+        generate the variable to be used here as the map input.
+
+    Notes
+    -----
+    * Although this implementation of the interpolator has been specifically 
+    designed for use with the Global Forecast System (and therefore expects
+    latitude,longitude,pressure,time coordinates), it can actually be used with
+    any 4D rectangular grid of data, provided that the appropriate data map is
+    passed (see below).
+
+    * For more information about quadrilinear interpolation, see
+    http://en.wikipedia.org/wiki/Trilinear_interpolation. The same concept can
+    be extended to 4 dimensions.
+
+    :Example:
+        >>> myInterpolator = Linear4DInterpolator(my4DMatrix,
+            [axis0map,axis1map,axis2map,axis3map,axis0dict,axis1dict,axis2dict,
+            axis3dict])
+
+        >>> # Request data (requires latitude, longitude, pressure and time):
+        >>> myInterpolator(lat, lon, press, time)
     """
 
     def __init__(self, data, data_map):
@@ -103,18 +103,7 @@ class Linear4DInterpolator(object):
         # Calculate longitude step to account for HD and SD data
         self.lonStep = self.dmap[1][1] - self.dmap[1][0]
 
-
-    def __call__(self, *coordinates):
-
-        # Check that the correct number of coordinates is passed
-        if len(coordinates) != 4:
-            raise TypeError('4 coordinates are required while calling the 4D interpolator!')
-
-        lat = coordinates[0]
-        lon = coordinates[1]
-        press = coordinates[2]
-        time = coordinates[3]
-
+    def __call__(self, lat, lon, press, time):
         # Check if within bounds and switch to nearest neighbour if not
         lat = numpy.clip(lat, self.min[0], self.max[0])
         lon = numpy.clip(lon, self.min[1], self.max[1])

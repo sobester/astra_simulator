@@ -1,0 +1,1466 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>astra API reference &mdash; astra 1.3.1 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  
+  
+    <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  
+
+  
+
+  
+        <link rel="index" title="Index"
+              href="genindex.html"/>
+        <link rel="search" title="Search" href="search.html"/>
+    <link rel="top" title="astra 1.3.1 documentation" href="index.html"/>
+        <link rel="prev" title="Installation" href="installation.html"/> 
+
+  
+  <script src="_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="index.html" class="icon icon-home"> astra
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                1.3.1
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">astra API reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#flight">Flight</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#forecast-environment">Forecast Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sounding-environment">Sounding Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#gfs-handler">GFS_Handler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#linear-4d-interpolator">Linear 4D interpolator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-astra.flight_tools">astra.flight_tools module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-astra.global_tools">astra.global_tools module</a></li>
+</ul>
+</li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">astra</a>
+        
+      </nav>
+
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+      <li>astra API reference</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/reference.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="astra-api-reference">
+<h1>astra API reference<a class="headerlink" href="#astra-api-reference" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="flight">
+<h2>Flight<a class="headerlink" href="#flight" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="astra.simulator.flight">
+<em class="property">class </em><code class="descclassname">astra.simulator.</code><code class="descname">flight</code><span class="sig-paren">(</span><em>environment</em>, <em>balloonGasType</em>, <em>balloonModel</em>, <em>nozzleLift</em>, <em>payloadTrainWeight</em>, <em>parachuteModel=None</em>, <em>numberOfSimRuns=10</em>, <em>trainEquivSphereDiam=0.1</em>, <em>floatingFlight=False</em>, <em>floatingAltitude=None</em>, <em>ventingStart=1000</em>, <em>excessPressureCoeff=1.0</em>, <em>outputFile=''</em>, <em>debugging=False</em>, <em>log_to_file=False</em>, <em>progress_to_file=False</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">object</span></code></p>
+<p>Primary Balloon flight simulation class.</p>
+<p>Provides methods for solving the ascent rate equation [ref needed],</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>environment</strong> : <code class="xref py py-obj docutils literal"><span class="pre">environment</span></code></p>
+<blockquote>
+<div><p>either soundingEnvironment or forecastEnvironment) already configured
+with the environmental model. See the Weather Module for more
+information.</p>
+</div></blockquote>
+<p><strong>balloonGasType</strong> : string</p>
+<blockquote>
+<div><p>&#8216;Helium&#8217;|&#8217;Hydrogen&#8217;</p>
+</div></blockquote>
+<p><strong>balloonModel</strong> : string</p>
+<blockquote>
+<div><p>model of the balloon. Accepted values can be found in
+available_balloons_parachutes.py.</p>
+</div></blockquote>
+<p><strong>nozzleLift</strong> : scalar</p>
+<blockquote>
+<div><p>nozzle lift in kg</p>
+</div></blockquote>
+<p><strong>payloadTrainWeight</strong> : scalar</p>
+<blockquote>
+<div><p>weight of the payload train in kg</p>
+</div></blockquote>
+<p><strong>parachuteModel</strong> : string</p>
+<blockquote>
+<div><p>model of the parachute. Accepted values can be found in
+available_balloons_parachutes.py.</p>
+</div></blockquote>
+<p><strong>trainEquivSphereDiam</strong> : scalar</p>
+<blockquote>
+<div><p>the diameter (in meters) of sphere that generates the same drag as the
+train</p>
+</div></blockquote>
+<p><strong>numberOfSimRuns</strong> : int</p>
+<blockquote>
+<div><p>total number of simulations to be run. If 1, a deterministic simulation
+is run. If &gt;1, Monte Carlo perturbations are applied to each simulation</p>
+</div></blockquote>
+<p><strong>[excessPressureCoeff]</strong> : scalar (default 1)</p>
+<blockquote>
+<div><p>TODO: the coefficient of excess pressure of the balloon on the gas
+inside. Currently unused</p>
+</div></blockquote>
+<p><strong>[floatingFlight]</strong> : bool (default False)</p>
+<blockquote>
+<div><p>TRUE if the balloon is going to vent air and float rather than burst.</p>
+</div></blockquote>
+<p><strong>[floatingAltitude]</strong> : scalar</p>
+<blockquote>
+<div><p>the target altitude for the balloon to float, in meters. Ignored if
+floatingFlight is FALSE</p>
+</div></blockquote>
+<p><strong>[ventingStart]</strong> : scalar (default 1000m)</p>
+<blockquote>
+<div><p>how many meters below the target floating altitude should the venting
+start. Ignored if floatingFlight is FALSE.</p>
+</div></blockquote>
+<p><strong>[maxFlightTime]</strong> : scalar (default 18000 seconds)</p>
+<blockquote>
+<div><p>Maximum duration, in seconds, of a flight to be simulated. Warning:
+setting a high maxFlightTime during a floatingFlight could take a long
+time to simulate!</p>
+</div></blockquote>
+<p><strong>[outputFile]</strong> : string</p>
+<blockquote>
+<div><p>the path of the output file containing all the simulation data. The
+format of the file to be generated depends on the extension. Available
+formats are,
+&#8216;json&#8217; : JavaScript data structure, used to provide data to the</p>
+<blockquote>
+<div><p>web interface</p>
+</div></blockquote>
+<dl class="docutils">
+<dt>&#8216;kml&#8217;</dt>
+ <span class="classifier-delimiter">:</span> <span class="classifier">Standard format for geographical data. It can be opened by</span><dd><p class="first last">Google Maps, Google Earth, etc</p>
+</dd>
+<dt>&#8216;kmz&#8217;</dt>
+ <span class="classifier-delimiter">:</span> <span class="classifier">Zipped kml, good for online use (eg Google Maps). The</span><dd><p class="first last">file size is significantly reduced;</p>
+</dd>
+<dt>&#8216;csv&#8217;</dt>
+ <span class="classifier-delimiter">:</span> <span class="classifier">Comma separated values, the preferred format for further</span><dd><p class="first last">data processing with any other software;</p>
+</dd>
+</dl>
+<p>&#8216;csv.zip&#8217; : Zipped csv file;
+&#8216;web&#8217; : This stores json, kml and csv.zip in the same folder</p>
+<blockquote>
+<div><p>requested. This is used by the web interface to prepare files
+for export. If no extension is found, a new folder is created
+and ALL output formats are stored.</p>
+</div></blockquote>
+</div></blockquote>
+<p><strong>[debugging]</strong> : bool (default False)</p>
+<blockquote>
+<div><p>if TRUE, all the information regarding the simulation will be logged.
+If it&#8217;s set to FALSE, only errors will be logged.</p>
+</div></blockquote>
+<p><strong>[log_to_file]</strong> : bool</p>
+<blockquote>
+<div><p>determines the location where the errors and debug messages will be
+logged. If TRUE, an error.log file will be created in your current
+folder and everything will go in there (make sure you have permissions
+to write in the current folder, or the simulator will not work!)
+If FALSE, all the errors and debug messages will be displayed on the
+terminal or command line.</p>
+</div></blockquote>
+<p><strong>[progress_to_file]</strong> : bool</p>
+<blockquote class="last">
+<div><p>If TRUE, a progress .json file will be created in the current folder
+and will be updated during preflight and then once per &#8216;flight&#8217;.
+If FALSE, progress information about the simulation will be displayed
+on the terminal or command line.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Notes</p>
+<ul>
+<li><p class="first">The run() method takes all the necessary steps to run the simulation.
+For standard users, the use of the run() method is RECOMMENDED.</p>
+</li>
+<li><p class="first">To simply run the simulation, the run() method can be used. :Example:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">my_flight_simulation</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</pre></div>
+</div>
+</li>
+</ul>
+<dl class="method">
+<dt id="astra.simulator.flight.fly">
+<code class="descname">fly</code><span class="sig-paren">(</span><em>flightNumber</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.fly" title="Permalink to this definition">¶</a></dt>
+<dd><p>Execute a single simulation.
+It should be run N times, where N is the number of simulation runs
+specified upon configuration in the numberOfSimRuns variable.
+flightNumber should have values 0...N-1</p>
+<p>If successful, no errors are thrown. Enable debugging for detailed
+information.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.simulator.flight.postflight">
+<code class="descname">postflight</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.postflight" title="Permalink to this definition">¶</a></dt>
+<dd><p>After all the simulations have been executed, this method puts the
+results together, processes them and stores them in the outputFormat
+required.</p>
+<p>The results are stored in the outputFile specified upon configuration.</p>
+<div class="admonition seealso">
+<p class="first admonition-title">See also</p>
+<p class="last"><a class="reference internal" href="#astra.simulator.flight" title="astra.simulator.flight"><code class="xref py py-obj docutils literal"><span class="pre">astra.simulator.flight</span></code></a>, <code class="xref py py-obj docutils literal"><span class="pre">self.outputFile</span></code></p>
+</div>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.simulator.flight.preflight">
+<code class="descname">preflight</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.preflight" title="Permalink to this definition">¶</a></dt>
+<dd><p>Run a series of pre-flight checks and calculations to verify the
+consistency of the flight parameters entered and to prepare all the
+data required for simulation.</p>
+<p>It is MANDATORY to execute this method before the simulation (otherwise
+the simulation will throw an error)</p>
+<p>If successful, no errors are thrown. Enable debugging for detailed
+information.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.simulator.flight.reset">
+<code class="descname">reset</code><span class="sig-paren">(</span><em>keepParameters=False</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.reset" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reset the simulation.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>keepParameters</strong> : bool (default False)</p>
+<blockquote class="last">
+<div><p>If FALSE, all the parameters are deleted and the flight object is
+ready to be reconfigured. If keepParameters is TRUE, all the
+results are deleted but the initial flight configuration is
+preserved. preflight() should still be run again before performing
+anymore simulations.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.simulator.flight.run">
+<code class="descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.run" title="Permalink to this definition">¶</a></dt>
+<dd><p>This method takes all the necessary steps to run the simulation and
+wraps together all the simulation-specific methods found below. This
+method is RECOMMENDED for standard users.</p>
+<p>Returns 0 if the simulation succeeded, or the error number if there
+were errors. Check the error.log and the simulator&#8217;s documentation for
+a full description of the error(s).</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="astra.simulator.flight.samplingTime">
+<code class="descname">samplingTime</code><a class="headerlink" href="#astra.simulator.flight.samplingTime" title="Permalink to this definition">¶</a></dt>
+<dd><p>Note: No setter exists for this, as it should not be set by the user</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.simulator.flight.updateProgress">
+<code class="descname">updateProgress</code><span class="sig-paren">(</span><em>value</em>, <em>action</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.updateProgress" title="Permalink to this definition">¶</a></dt>
+<dd><p>Update the progress file with the ratio of value and the total steps of
+the simulation calculated when the method run() is executed.</p>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li>if run() is not being used, the object&#8217;s parameter</li>
+</ul>
+<p>_totalStepsForProgress should be defined before executing this method
+for it to work properly.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.simulator.flight.write">
+<code class="descname">write</code><span class="sig-paren">(</span><em>filename</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.write" title="Permalink to this definition">¶</a></dt>
+<dd><p>Function responsible for storing the data in the given format.</p>
+<p>The format of the file to be generated depends on the extension given
+in the outputFile.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>filename</strong> : string</p>
+<blockquote class="last">
+<div><p>the name of the output file. Accepted extensions are:
+&#8216;json&#8217;  JavaScript data structure, used to pass data to the web</p>
+<blockquote>
+<div><p>interface;</p>
+</div></blockquote>
+<dl class="docutils">
+<dt>&#8216;kml&#8217;   Standard format for geographic data. It can be opened by</dt>
+<dd><p class="first last">Google Maps, Google Earth, etc;</p>
+</dd>
+<dt>&#8216;kmz&#8217;   Zipped kml, good for online use (eg Google Maps). The file</dt>
+<dd><p class="first last">size is significantly reduced;</p>
+</dd>
+<dt>&#8216;csv&#8217;   Comma separated values, the preferred format for further</dt>
+<dd><p class="first last">data processing with any other software;</p>
+</dd>
+<dt>&#8216;web&#8217;   This stores json, kml and csv in the same folder requested.</dt>
+<dd><p class="first last">This is used by the web interface to prepare files for export.</p>
+</dd>
+<dt>none    If no extension is found, a new folder is created and ALL</dt>
+<dd><p class="first last">output formats are stored.</p>
+</dd>
+</dl>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.simulator.flight.write_CSV">
+<code class="descname">write_CSV</code><span class="sig-paren">(</span><em>filename</em>, <em>zipped=False</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.write_CSV" title="Permalink to this definition">¶</a></dt>
+<dd><p>GENERATE CSV FILE OUT OF RESULTS</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.simulator.flight.write_JSON">
+<code class="descname">write_JSON</code><span class="sig-paren">(</span><em>filename</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.write_JSON" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="astra.simulator.flight.write_KML">
+<code class="descname">write_KML</code><span class="sig-paren">(</span><em>filename</em>, <em>zipped=False</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.simulator.flight.write_KML" title="Permalink to this definition">¶</a></dt>
+<dd><p>GENERATE KML OUT OF RESULTS</p>
+<p>Also allows zipped kml (kmz) if .kmz is provided in the extension</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="forecast-environment">
+<h2>Forecast Environment<a class="headerlink" href="#forecast-environment" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="astra.weather.forecastEnvironment">
+<em class="property">class </em><code class="descclassname">astra.weather.</code><code class="descname">forecastEnvironment</code><span class="sig-paren">(</span><em>launchSiteLat</em>, <em>launchSiteLon</em>, <em>launchSiteElev</em>, <em>dateAndTime</em>, <em>UTC_offset=0</em>, <em>inflationTemperature=0.0</em>, <em>forceNonHD=False</em>, <em>maxFlightTime=18000</em>, <em>debugging=False</em>, <em>log_to_file=False</em>, <em>progressHandler=None</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.weather.forecastEnvironment" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">astra.weather.environment</span></code></p>
+<p>Class responsible for downloading weather forecast data from the Global
+Forecast System (GFS) and generating a forecast-based atmospheric model.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>launchSiteLat</strong> : float</p>
+<blockquote>
+<div><p>latitude of the launch site [deg]</p>
+</div></blockquote>
+<p><strong>launchSiteLon</strong> : float</p>
+<blockquote>
+<div><p>longitude of the launch site [deg]</p>
+</div></blockquote>
+<p><strong>launchSiteElev</strong> : float</p>
+<blockquote>
+<div><p>elevation of the launch site above Mean Sea Level [m]</p>
+</div></blockquote>
+<p><strong>dateAndTime</strong> : <code class="xref py py-obj docutils literal"><span class="pre">datetime.datetime</span></code></p>
+<blockquote>
+<div><p>The launch time</p>
+</div></blockquote>
+<p><strong>UTC_offset</strong> : float</p>
+<blockquote>
+<div><p>the offset in hours between the current time zone and UTC (for example,
+Florida in winter has a UTC_offset = -5)</p>
+</div></blockquote>
+<p><strong>inflationTemperature</strong> : float</p>
+<blockquote>
+<div><p>the ambient temperature during the balloon inflation [degC]</p>
+</div></blockquote>
+<p><strong>forceNonHD</strong> : bool (default False)</p>
+<blockquote>
+<div><p>if TRUE, the weather forecast download will be forced to a lower
+resolution (i.e. 1deg x 1deg)</p>
+</div></blockquote>
+<p><strong>[debug]</strong> : bool, optional (default False)</p>
+<blockquote>
+<div><p>If TRUE, all the information available will be logged</p>
+</div></blockquote>
+<p><strong>[log_to_file]: bool, optional (default False)</strong></p>
+<blockquote class="last">
+<div><p>If true, all error and debug logs will be stored in an error.log file</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition seealso">
+<p class="first admonition-title">See also</p>
+<p class="last"><code class="xref py py-obj docutils literal"><span class="pre">astra.GFS</span></code></p>
+</div>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li>The simulator automatically switches to non-HD forecast if the amount of</li>
+</ul>
+<p>data requested is too high.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Example:</th><td class="field-body"><div class="first highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">datetime</span> <span class="k">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timedelta</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">weather</span>
+</pre></div>
+</div>
+<div class="last highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">my_forecast_atmosphere</span> <span class="o">=</span> <span class="n">weather</span><span class="o">.</span><span class="n">forecastEnvironment</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">my_forecast_atmosphere</span><span class="o">.</span><span class="n">launchSiteLat</span> <span class="o">=</span> <span class="mf">50.2245</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">my_forecast_atmosphere</span><span class="o">.</span><span class="n">launchSiteLon</span> <span class="o">=</span> <span class="o">-</span><span class="mf">5.3069</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">my_forecast_atmosphere</span><span class="o">.</span><span class="n">launchSiteElev</span> <span class="o">=</span> <span class="mi">60</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">my_forecast_atmosphere</span><span class="o">.</span><span class="n">dateAndTime</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span> <span class="o">+</span> <span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">my_forecast_atmosphere</span><span class="o">.</span><span class="n">UTC_offset</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">my_forecast_atmosphere</span><span class="o">.</span><span class="n">loadForecast</span><span class="p">()</span>
+</pre></div>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="method">
+<dt id="astra.weather.forecastEnvironment.loadForecast">
+<code class="descname">loadForecast</code><span class="sig-paren">(</span><em>progressHandler=None</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.weather.forecastEnvironment.loadForecast" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a link to the Global Forecast System and download the required
+atmospheric data.</p>
+<p>Once the data has been downloaded, altitude data is generated and
+interpolated. The processed data is then prepared to be used with
+standard environment get... methods.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>progressHandler</strong> : function</p>
+<blockquote>
+<div><p>Returns progress</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><strong>status</strong> : TRUE if successful.</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.weather.forecastEnvironment.perturbWind">
+<code class="descname">perturbWind</code><span class="sig-paren">(</span><em>numberOfFlights</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.weather.forecastEnvironment.perturbWind" title="Permalink to this definition">¶</a></dt>
+<dd><p>Perform a wind perturbation for the purpose of Monte Carlo simulations.</p>
+<p>Note: this method should only be called AFTER loadForecast() has been
+performed.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="sounding-environment">
+<h2>Sounding Environment<a class="headerlink" href="#sounding-environment" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="astra.weather.soundingEnvironment">
+<em class="property">class </em><code class="descclassname">astra.weather.</code><code class="descname">soundingEnvironment</code><span class="sig-paren">(</span><em>launchSiteLat</em>, <em>launchSiteLon</em>, <em>launchSiteElev</em>, <em>dateAndTime</em>, <em>soundingFile</em>, <em>timeFromSounding</em>, <em>distanceFromSounding</em>, <em>inflationTemperature=0.0</em>, <em>UTC_offset=0.0</em>, <em>debugging=False</em>, <em>log_to_file=False</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.weather.soundingEnvironment" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">astra.weather.environment</span></code></p>
+<p>Class for generating an atmospheric model from sounding data.</p>
+<p>Instantiate a new soundingEnvironment object if you are providing a
+sounding file to generate an atmospheric model. Accepted formats for
+sounding files are .ftr and .sounding .</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>launchSiteLat</strong> : float</p>
+<blockquote>
+<div><p>latitude of the launch site [deg]</p>
+</div></blockquote>
+<p><strong>launchSiteLon</strong> : float</p>
+<blockquote>
+<div><p>longitude of the launch site [deg]</p>
+</div></blockquote>
+<p><strong>launchSiteElev</strong> : float</p>
+<blockquote>
+<div><p>elevation of the launch site above Mean Sea Level [m]</p>
+</div></blockquote>
+<p><strong>dateAndTime</strong> : <code class="xref py py-obj docutils literal"><span class="pre">datetime.datetime</span></code></p>
+<blockquote>
+<div><p>The launch time</p>
+</div></blockquote>
+<p><strong>UTC_offset</strong> : float</p>
+<blockquote>
+<div><p>the offset in hours between the current time zone and UTC (for example,
+Florida in winter has a UTC_offset = -5)</p>
+</div></blockquote>
+<p><strong>inflationTemperature</strong> : float</p>
+<blockquote>
+<div><p>the ambient temperature during the balloon inflation [degC]</p>
+</div></blockquote>
+<p><strong>distanceFromSounding</strong> : float</p>
+<blockquote>
+<div><p>the distance between the launch site and the location where the 
+sounding file was recorded [km]</p>
+</div></blockquote>
+<p><strong>timeFromSounding</strong> : float</p>
+<blockquote>
+<div><p>the duration between the balloon launch and the time when the sounding
+file was recorded [hours]</p>
+</div></blockquote>
+<p><strong>[maxAltitude]</strong> : float (default 50999m)</p>
+<blockquote>
+<div><p>the upper altitude limit below which the atmosphere is modelled. [m]</p>
+</div></blockquote>
+<p><strong>[debug]</strong> : bool, optional (default False)</p>
+<blockquote>
+<div><p>If TRUE, all the information available will be logged</p>
+</div></blockquote>
+<p><strong>[log_to_file]</strong> : bool, optional (default False)</p>
+<blockquote>
+<div><p>If true, all error and debug logs will be stored in an error.log file</p>
+</div></blockquote>
+<p><strong>:Example:</strong></p>
+<blockquote class="last">
+<div><div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">datetime</span> <span class="k">import</span> <span class="n">datetime</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">weather</span>
+</pre></div>
+</div>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">my_sounding_atmosphere</span> <span class="o">=</span> <span class="n">weather</span><span class="o">.</span><span class="n">soundingEnvironment</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">my_sounding_atmosphere</span><span class="o">.</span><span class="n">launchSiteLat</span> <span class="o">=</span> <span class="mf">50.2245</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">my_sounding_atmosphere</span><span class="o">.</span><span class="n">launchSiteLon</span> <span class="o">=</span> <span class="o">-</span><span class="mf">5.3069</span>
+<span class="go">my_sounding_atmosphere.launchSiteElev = 60</span>
+<span class="go">my_sounding_atmosphere.dateAndTime = datetime.now()</span>
+<span class="go">my_sounding_atmosphere.UTC_offset = 3</span>
+<span class="go">my_sounding_atmosphere.inflationTemperature = 10.5</span>
+<span class="go">my_sounding_atmosphere.distanceFromSounding = 36</span>
+<span class="go">my_sounding_atmosphere.timeFromSounding = 2.8</span>
+</pre></div>
+</div>
+<p>my_sounding_atmosphere.loadSounding(&#8216;/path/to/mySoundingFile.ftr&#8217;)</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="method">
+<dt id="astra.weather.soundingEnvironment.loadSounding">
+<code class="descname">loadSounding</code><span class="sig-paren">(</span><em>soundingFile</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.weather.soundingEnvironment.loadSounding" title="Permalink to this definition">¶</a></dt>
+<dd><p>Load the sounding file and generate the atmospheric model.</p>
+<p>Data is validated upon loading. Once this is done, cubic spline
+(scipy.interpolate.UnivariateSpline) interpolator functions are then
+stored as the getTemperature, getPressure, getWindDirection,
+getWindSpeed, getDensity and getViscosity methods.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>soundingFile</strong> : string</p>
+<blockquote class="last">
+<div><p>the relative or the absolute path to the sounding file.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li>since sounding files only provide information for one location and at 
+one point in time, the lat, lon and time arguments for the get...
+methods are optional.</li>
+</ul>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.weather.soundingEnvironment.perturbWind">
+<code class="descname">perturbWind</code><span class="sig-paren">(</span><em>numberOfFlights</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.weather.soundingEnvironment.perturbWind" title="Permalink to this definition">¶</a></dt>
+<dd><p>Perturb the wind profiles for the purpose of Monte Carlo simulations.</p>
+<p>Given the numberOfFlights, this method generates N different perturbed
+wind profiles, where N = numberOfFlights, and stores them in the
+getMCWindDirection and getMCWindSpeed lists. The perturbation is based
+on the distance and time from sounding and is performed by picking a
+random experimentally-measured perturbation and applying it to each
+wind profile.</p>
+<p>Wind data should then be requested using the following syntax:</p>
+<blockquote>
+<div>getMCWindDirection[flightNumber].getTemperature(lat,lon,alt,time)</div></blockquote>
+<p>where flightNumber should be in the range 0...numberOfFlights-1.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="gfs-handler">
+<h2>GFS_Handler<a class="headerlink" href="#gfs-handler" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="astra.GFS.GFS_Handler">
+<em class="property">class </em><code class="descclassname">astra.GFS.</code><code class="descname">GFS_Handler</code><span class="sig-paren">(</span><em>lat</em>, <em>lon</em>, <em>date_time</em>, <em>HD=True</em>, <em>forecast_duration=4</em>, <em>debugging=False</em>, <em>log_to_file=False</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.GFS.GFS_Handler" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">object</span></code></p>
+<p>Use this to perform any operation related to the Global Forecast System.</p>
+<p>Downloads weather forecast data for any location on the planet for up to 10
+days from the closest cycle. The data is downloaded from either the HD
+service, providing data on a 0.25 deg latitude x 0.25 deg longitude x 26
+altitude levels grid, or from the SD service, with a coarser grid. Note
+that even when the HD service is used, the high altitude data is always
+requested in SD since the HD coverage is only up to 10mB pressure alt.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>lat</strong> : float</p>
+<blockquote>
+<div><p>latitude of the location where forecast is required.</p>
+</div></blockquote>
+<p><strong>lon</strong> : float</p>
+<blockquote>
+<div><p>longitude of the location where forecast is required.</p>
+</div></blockquote>
+<p><strong>date_time</strong> : <code class="xref py py-obj docutils literal"><span class="pre">datetime.datetime.</span></code></p>
+<blockquote>
+<div><p>UTC time of the required forecast (min 30 days from today, max 10 days
+from latest cycle issuing time, see warning above).</p>
+</div></blockquote>
+<p><strong>[forecast_duration]</strong> : scalar (default 4)</p>
+<blockquote>
+<div><p>the duration in hours of the forecast data required.</p>
+</div></blockquote>
+<p><strong>[HD]</strong> : bool (default True)</p>
+<blockquote>
+<div><p>if FALSE, non-HD forecast will be downloaded. Otherwise, HD forecast
+will be downloaded and, if the data size is too high, the GFS_Handler
+will automatically switch to non-HD.</p>
+</div></blockquote>
+<p><strong>[debugging]</strong> : bool (default False)</p>
+<blockquote>
+<div><p>If debugging is TRUE, all the information available will be logged.
+Otherwise, only errors will be logged.</p>
+</div></blockquote>
+<p><strong>[log_to_file]</strong> : bool (default False)</p>
+<blockquote class="last">
+<div><p>If log_to_file is set to TRUE, all error and debug logs will be stored
+in a file called error.log. If FALSE, all error and debug logs will be
+directly displayed on the terminal or command line.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li>The NOAA issues new datasets (cycles) at 00:00, 06:00, 12:00 and 18:00 UTC</li>
+</ul>
+<p>every day and the 10 days of forecast data. Refer to the cycle issuing
+time.</p>
+<ul class="simple">
+<li>As it&#8217;s not possible to know in advance what the latest cycle available</li>
+</ul>
+<p>is (there is a delay between the cycle issuing time and its
+availability), it&#8217;s recommended to limit the time span of data downloads
+from the GFS to 8 days.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Example:</th><td class="field-body"></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Download forecast data for tomorrow at the University of Southampton</span>
+</pre></div>
+</div>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">datetime</span>
+</pre></div>
+</div>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">myGFSlink</span> <span class="o">=</span> <span class="n">GFS_Handler</span><span class="p">(</span><span class="mf">50.93543</span><span class="p">,</span><span class="o">-</span><span class="mf">1.39619</span><span class="p">,</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">+</span><span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">myGFSlink</span><span class="o">.</span><span class="n">downloadForecast</span><span class="p">()</span>
+</pre></div>
+</div>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">getTemp</span><span class="p">,</span><span class="n">getPress</span> <span class="o">=</span> <span class="n">myGFSlink</span><span class="o">.</span><span class="n">interpolateData</span><span class="p">(</span><span class="s1">&#39;t&#39;</span><span class="p">,</span><span class="s1">&#39;p&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Request temperature at 51.2 lat, 0.46 lon, 32000m alt, 1 hr from now</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">getTemp</span><span class="p">(</span><span class="mf">51.2</span><span class="p">,</span><span class="mf">0.46</span><span class="p">,</span><span class="mi">32000</span><span class="p">,</span><span class="n">myGFSlink</span><span class="o">.</span><span class="n">getGFStime</span><span class="p">(</span>
+<span class="gp">&gt;&gt;&gt; </span>   <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">+</span><span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">seconds</span><span class="o">=</span><span class="mi">3600</span><span class="p">)))</span>
+</pre></div>
+</div>
+<dl class="method">
+<dt id="astra.GFS.GFS_Handler.downloadForecast">
+<code class="descname">downloadForecast</code><span class="sig-paren">(</span><em>progressHandler=None</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.GFS.GFS_Handler.downloadForecast" title="Permalink to this definition">¶</a></dt>
+<dd><p>Connect to the Global Forecast System and download the closest cycle
+available to the date_time required. The cycle date and time is stored
+in the object&#8217;s cycleDateTime variable.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>status</strong> : bool</p>
+<blockquote class="last">
+<div><p>TRUE if the download was successful, FALSE otherwise.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.GFS.GFS_Handler.getGFStime">
+<code class="descname">getGFStime</code><span class="sig-paren">(</span><em>time</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.GFS.GFS_Handler.getGFStime" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert standard datetime.datetime objects to GFS time units.
+The time parameter should be a datetime.datetime object.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">GFStime (scalar) or NaN:</p>
+<blockquote class="last">
+<div><p>float corresponding to the converted time, or nan if there
+was no downloaded data found.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="astra.GFS.GFS_Handler.interpolateData">
+<code class="descname">interpolateData</code><span class="sig-paren">(</span><em>*variables</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.GFS.GFS_Handler.interpolateData" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set up a linear 4d interpolation for each variable given and returns
+it. The returned interpolator can then be used by calling it with
+standard 4D coordinates (lat, lon, alt, time).</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>variables</strong> : tuple of strings</p>
+<blockquote>
+<div><dl class="docutils">
+<dt>Acceptable values for <a href="#id1"><span class="problematic" id="id2">*</span></a>variables can be a combination of any of</dt>
+<dd><p class="first last">&#8216;t&#8217;|&#8217;temp&#8217;|&#8217;temperature&#8217;        temperature interpolation
+&#8216;p&#8217;|&#8217;press&#8217;|&#8217;pressure&#8217;          pressure interpolation
+&#8216;d&#8217;|&#8217;windrct&#8217;|&#8217;wind_direction&#8217;  wind direction interpolation
+&#8216;s&#8217;|&#8217;windspd&#8217;|&#8217;wind_speed&#8217;      wind speed interpolation</p>
+</dd>
+</dl>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">list of <code class="xref py py-obj docutils literal"><span class="pre">Linear4DInterpolator</span></code> objects, in the same order as</p>
+<p class="last"><a href="#id3"><span class="problematic" id="id4">*</span></a>variables.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li>The linear interpolation is based on the interpolate.Linear4DInterpolator class.</li>
+<li>Warning: the time parameter required by the Linear4DInterpolator</li>
+</ul>
+<p>objects must be in GFS units! Use the getGFStime(time) method for
+conversion.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="linear-4d-interpolator">
+<h2>Linear 4D interpolator<a class="headerlink" href="#linear-4d-interpolator" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="astra.interpolate.Linear4DInterpolator">
+<em class="property">class </em><code class="descclassname">astra.interpolate.</code><code class="descname">Linear4DInterpolator</code><span class="sig-paren">(</span><em>data</em>, <em>data_map</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.interpolate.Linear4DInterpolator" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">object</span></code></p>
+<p>The Linear4DInterpolator is a simple 4D linear interpolator, designed to
+work on rectangular grids only (they don&#8217;t need to be necessarily uniform).</p>
+<p>Linear4DInterpolator essentially isolates the 4D hyper-tetrahedron inside
+which the requested point lies and performs a quadrilinear interpolation
+using the 16 vertices of that hyper-tetrahedron only. This method has
+proven much faster than scipy&#8217;s interpolate.LinearNDInterpolator, which is
+based on Qhull&#8217;s triangulation method, very slow on rectangular grids.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>data</strong> : numpy array (4D)</p>
+<blockquote>
+<div><p>the 4D matrix containing data to be interpolated</p>
+</div></blockquote>
+<p><strong>data_map</strong> : list</p>
+<blockquote class="last">
+<div><p>contains four lists and four dictionaries, formed of the real world
+values corresponding to each data matrix axis and their reverse mapping
+dictionaries. For example, for a 3x2x4x1 matrix, coordinates should be
+a list of four lists and four dictionaries, the first one being a list
+of the coordinates corresponding to the 3 &#8216;rows&#8217; of the first axis, the
+second one a list of the coordinates corresponding to the 2 &#8216;rows&#8217; of
+the second axis, etc. Then, the first dictionary should contain a map
+between real world values and &#8216;row&#8217; number for the first axis (real
+world value is the dictionary&#8217;s key and the row number is the
+corresponding value), and so on.
+Note: to make sure this is formatted correctly, use the GFS.GFS_Map to
+prepare the mapping and then use its mapCoordinates() method to
+generate the variable to be used here as the map input.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li>Although this implementation of the interpolator has been specifically</li>
+</ul>
+<p>designed for use with the Global Forecast System (and therefore expects
+latitude,longitude,pressure,time coordinates), it can actually be used with
+any 4D rectangular grid of data, provided that the appropriate data map is
+passed (see below).</p>
+<ul class="simple">
+<li>For more information about quadrilinear interpolation, see</li>
+</ul>
+<p><a class="reference external" href="http://en.wikipedia.org/wiki/Trilinear_interpolation">http://en.wikipedia.org/wiki/Trilinear_interpolation</a>. The same concept can
+be extended to 4 dimensions.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Example:</th><td class="field-body"><div class="first highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">myInterpolator</span> <span class="o">=</span> <span class="n">Linear4DInterpolator</span><span class="p">(</span><span class="n">my4DMatrix</span><span class="p">,</span>
+<span class="go">    [axis0map,axis1map,axis2map,axis3map,axis0dict,axis1dict,axis2dict,</span>
+<span class="go">    axis3dict])</span>
+</pre></div>
+</div>
+<div class="last highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Request data (requires latitude, longitude, pressure and time):</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">myInterpolator</span><span class="p">(</span><span class="n">lat</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">press</span><span class="p">,</span> <span class="n">time</span><span class="p">)</span>
+</pre></div>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="module-astra.flight_tools">
+<span id="astra-flight-tools-module"></span><h2>astra.flight_tools module<a class="headerlink" href="#module-astra.flight_tools" title="Permalink to this headline">¶</a></h2>
+<p>A collection of small flight-specific tools used throughout the simulation.</p>
+<p>These tools generally perform basic performance calculations, such as balloon
+diameter and drag.</p>
+<p>University of Southampton</p>
+<dl class="function">
+<dt id="astra.flight_tools.balloonDrag">
+<code class="descclassname">astra.flight_tools.</code><code class="descname">balloonDrag</code><span class="sig-paren">(</span><em>diameter</em>, <em>ascentRate</em>, <em>density</em>, <em>viscosity</em>, <em>lowCD</em>, <em>highCD</em>, <em>ReBand</em>, <em>transition</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.flight_tools.balloonDrag" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates and returns the balloon drag, using model from [1].</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>diameter</strong> : scalar. balloon diameter [m]</p>
+<p><strong>ascent rate</strong> : scalar. balloon vertical velocity [m/s]</p>
+<p><strong>density</strong> : scalar. current air density [kg/m3]</p>
+<p><strong>viscosity</strong> : scalar. current air viscosity [kg/m3]</p>
+<p><strong>lowCd</strong> : the lower</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><strong>balloon_drag</strong> : float [Newtons].</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">References</p>
+<p>[1] [1] Sobester, A., Czerski, H.,  Zapponi, N., and Castro, I. P., &#8220;High
+Altitude Gas Balloon Trajectory Prediction - a Monte Carlo Model&#8221;. AIAA
+Journal, 52, (4), 2014, pp. 832-842.
+(doi:10.2514/1.J052900 &lt;http://dx.doi.org/10.2514/1.J052900&gt;).</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.flight_tools.gasMassForFloat">
+<code class="descclassname">astra.flight_tools.</code><code class="descname">gasMassForFloat</code><span class="sig-paren">(</span><em>currentAltitude</em>, <em>floatingAltitude</em>, <em>gasMassAtInflation</em>, <em>gasMassAtFloatingAltitude</em>, <em>ventStart=500</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.flight_tools.gasMassForFloat" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the gas mass profile to simulate the valves venting air to reach
+floating conditions.</p>
+<p>This method should only be used for floating flights.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>currentAltitude</strong> : scalar</p>
+<blockquote>
+<div><p>the altitude for which the gas mass is required [m]</p>
+</div></blockquote>
+<p><strong>floatingAltitude</strong> : scalar</p>
+<blockquote>
+<div><p>the target altitude for float [m]</p>
+</div></blockquote>
+<p><strong>gasMassAtInflation</strong> : scalar</p>
+<blockquote>
+<div><p>the initial gas mass, before venting [kg]</p>
+</div></blockquote>
+<p><strong>gasMassAtFloatingAltitude</strong> : scalar</p>
+<blockquote>
+<div><p>the final gas mass required to reach floating conditions [kg]</p>
+</div></blockquote>
+<p><strong>ventStart</strong> : scalar</p>
+<blockquote>
+<div><p>how many meters below the target floating altitude should the venting
+start. Default is 500m</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><strong>gasMassAtFloatingAltitude</strong> : float</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.flight_tools.liftingGasMass">
+<code class="descclassname">astra.flight_tools.</code><code class="descname">liftingGasMass</code><span class="sig-paren">(</span><em>nozzleLift</em>, <em>balloonMass</em>, <em>ambientTempC</em>, <em>ambientPressMbar</em>, <em>gasMolecularMass</em>, <em>excessPressureCoefficient</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.flight_tools.liftingGasMass" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates the gas mass, balloon volume and balloon diameter.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>nozzleLift</strong> : scalar (kg)</p>
+<p><strong>balloonMass</strong> : scalar (kg)</p>
+<p><strong>ambientTempC</strong> : scalar (Celsius)</p>
+<p><strong>ambientPressMbar</strong> : scalar (millibar)</p>
+<p><strong>gasMolecularMass</strong> : scalar (kg/mol)</p>
+<p><strong>excessPressCoefficient</strong> : scalar (dimension-less)</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><strong>gas_mass, balloon_volume, balloon_diameter</strong> : tuple (float, float, float</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.flight_tools.nozzleLiftForFloat">
+<code class="descclassname">astra.flight_tools.</code><code class="descname">nozzleLiftForFloat</code><span class="sig-paren">(</span><em>nozzleLiftAtInflation</em>, <em>airDensity</em>, <em>gasDensity</em>, <em>balloonVolume</em>, <em>balloonMass</em>, <em>currentAltitude</em>, <em>floatingAltitude</em>, <em>ventStart=500</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.flight_tools.nozzleLiftForFloat" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the nozzle lift of a balloon in floating configuration.</p>
+<p>This method should only be used for floating flights. Below the venting
+threshold (floatingAltitude-ventStart), the nozzle lift is unchanged.</p>
+<blockquote>
+<div>Otherwise, it&#8217;s recalculated.</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>nozzleLiftAtInflation</strong> : scalar</p>
+<blockquote>
+<div><p>nozzle lift of the balloon at inflation [kg]</p>
+</div></blockquote>
+<p><strong>airDensity</strong> : scalar</p>
+<blockquote>
+<div><p>density of air at current altitude [kg/m3]</p>
+</div></blockquote>
+<p><strong>gasDensity</strong> : scalar</p>
+<blockquote>
+<div><p>density of the gas at current altitude [kg/m3]</p>
+</div></blockquote>
+<p><strong>balloonVolume</strong> : scalar</p>
+<blockquote>
+<div><p>volume of the balloon at current altitude [m3]</p>
+</div></blockquote>
+<p><strong>balloonMass</strong> : scalar</p>
+<blockquote>
+<div><p>total balloon mass at current altitude [kg]</p>
+</div></blockquote>
+<p><strong>currentAltitude</strong> : scalar</p>
+<blockquote>
+<div><p>altitude at which the nozzle lift is required [m]</p>
+</div></blockquote>
+<p><strong>floatingAltitude</strong> : scalar</p>
+<blockquote>
+<div><p>target altitude for floating conditions [m]</p>
+</div></blockquote>
+<p><strong>ventStart</strong> : scalar (default 500)</p>
+<blockquote>
+<div><p>how many meters below the target floating altitude should the
+venting start. [m]</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><strong>CurrentNozzleLift</strong> : float [kg].</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.flight_tools.parachuteDrag">
+<code class="descclassname">astra.flight_tools.</code><code class="descname">parachuteDrag</code><span class="sig-paren">(</span><em>descentRate</em>, <em>density</em>, <em>parachuteAref</em>, <em>parachuteCD</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.flight_tools.parachuteDrag" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates and returns the drag generated by the parachute on descent.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>descentRate</strong> : float</p>
+<blockquote>
+<div><p>balloon vertical velocity [m/s]</p>
+</div></blockquote>
+<p><strong>density</strong> : float</p>
+<blockquote>
+<div><p>current air density [kg/m3]</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Returns a float with the parachute drag in [N].</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="module-astra.global_tools">
+<span id="astra-global-tools-module"></span><h2>astra.global_tools module<a class="headerlink" href="#module-astra.global_tools" title="Permalink to this headline">¶</a></h2>
+<p>These tools generally perform basic unit conversions, provide simple data and
+analyze lists.</p>
+<dl class="function">
+<dt id="astra.global_tools.ISAatmosphere">
+<code class="descclassname">astra.global_tools.</code><code class="descname">ISAatmosphere</code><span class="sig-paren">(</span><em>altitude=None</em>, <em>temperature=None</em>, <em>density=None</em>, <em>pressure=None</em>, <em>speedOfSound=None</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.ISAatmosphere" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return ISA atmospheric conditions for the input parameters given.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>(Note: Either the altitude or the temperature MUST be given!)</strong></p>
+<p><strong>altitude</strong> : [ft]</p>
+<blockquote>
+<div><p>Either this or temperature must be given</p>
+</div></blockquote>
+<p><strong>temperature</strong> : [degC]</p>
+<blockquote>
+<div><p>Either this or altitude. Input value may cause multiple solutions in
+return values: see Notes.</p>
+</div></blockquote>
+<p><strong>density</strong> : [kg/m3]</p>
+<p><strong>pressure</strong> : [mbar]</p>
+<p><strong>speedOfSound</strong> : [m/s]</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>(altitude,temperature,density,pressure,speedOfSound)</strong> : tuple</p>
+<blockquote class="last">
+<div><p>altitude [ft], temperature [degC], density [kg/m3], pressure [mbar],
+speedOfSound [m/s]. If only the temperature is provided and is higher
+than 489.8 degrees Celsius, two possible ISA solutions exist. In this
+case, the function will return:
+[[altitude0, altitude1],</p>
+<blockquote>
+<div><blockquote>
+<div><p>temperature,</p>
+</div></blockquote>
+<p>[density0,density1],
+[pressure0,pressure1],
+[speedOfSound0, speedOfSound1]].</p>
+</div></blockquote>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.c2kel">
+<code class="descclassname">astra.global_tools.</code><code class="descname">c2kel</code><span class="sig-paren">(</span><em>tempC</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.c2kel" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert a temperature in degrees Celsius to Kelvin.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.deg2m">
+<code class="descclassname">astra.global_tools.</code><code class="descname">deg2m</code><span class="sig-paren">(</span><em>degLat</em>, <em>degLon</em>, <em>latitude</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.deg2m" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert degrees of latitude and longitude to meters.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>degLat: distance in degrees of latitude</strong></p>
+<p><strong>degLon: distance in degrees of longitude</strong></p>
+<p><strong>latitude: current latitude [deg], used to calculate the distance between</strong></p>
+<blockquote>
+<div><p>meridians.</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>dLat, dLon</strong> : (float, float)</p>
+<blockquote class="last">
+<div><p>both in meters, representing the distance in the direction of the
+meridians and of the parallels respectively.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.dirspeed2uv">
+<code class="descclassname">astra.global_tools.</code><code class="descname">dirspeed2uv</code><span class="sig-paren">(</span><em>windDirection</em>, <em>windSpeed</em>, <em>resultType=None</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.dirspeed2uv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert wind direction and speed to u and v components</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>windDirection</strong> : scalar</p>
+<blockquote>
+<div><p>Direction FROM which the wind is blowing in degrees (clockwise 
+from the north).</p>
+</div></blockquote>
+<p><strong>windSpeed: speed of the wind [any units]</strong></p>
+<p><strong>resultType: optional, default None</strong></p>
+<blockquote>
+<div><p>&#8216;u&#8217; : returns only the u component
+&#8216;v&#8217; : returns only the v component
+None : returns (u, v]) component</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>components</strong> : See resultType input</p>
+<blockquote class="last">
+<div><p>wind component(s) in same units as input</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.feet2m">
+<code class="descclassname">astra.global_tools.</code><code class="descname">feet2m</code><span class="sig-paren">(</span><em>lengthFeet</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.feet2m" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert a length in feet to meters.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.find_nearest_index">
+<code class="descclassname">astra.global_tools.</code><code class="descname">find_nearest_index</code><span class="sig-paren">(</span><em>array</em>, <em>value</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.find_nearest_index" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find the index of the entry in the array which is nearest to value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>array</strong> : numpy array (1 x N)</p>
+<p><strong>value</strong> : the target value</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><strong>idx</strong> : int (the index)</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.getUTCOffset">
+<code class="descclassname">astra.global_tools.</code><code class="descname">getUTCOffset</code><span class="sig-paren">(</span><em>latitude</em>, <em>longitude</em>, <em>date_time</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.getUTCOffset" title="Permalink to this definition">¶</a></dt>
+<dd><p>Use the Google Maps API Time Zone service to obtain UTC offset
+information about the given location.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>latitude</strong> : scalar</p>
+<blockquote>
+<div><p>latitude of the location</p>
+</div></blockquote>
+<p><strong>longitude</strong> : scalar</p>
+<blockquote>
+<div><p>longitude of the location</p>
+</div></blockquote>
+<p><strong>date_time</strong> : <code class="xref py py-obj docutils literal"><span class="pre">datetime.datetime</span></code></p>
+<p><strong>Returns</strong></p>
+<p><strong>&#8212;&#8212;-</strong></p>
+<p><strong>UTCOffset</strong> : float</p>
+<blockquote class="last">
+<div><p>UTC offset in hours</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.kel2c">
+<code class="descclassname">astra.global_tools.</code><code class="descname">kel2c</code><span class="sig-paren">(</span><em>tempK</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.kel2c" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert a temperature in Kelvin to degrees Celsius.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.m2deg">
+<code class="descclassname">astra.global_tools.</code><code class="descname">m2deg</code><span class="sig-paren">(</span><em>dLat</em>, <em>dLon</em>, <em>latitude</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.m2deg" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts meters to degrees of latitude and longitude.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>dLat</strong> : float</p>
+<blockquote>
+<div><p>distance in the direction of meridians [m]. Positive to the north</p>
+</div></blockquote>
+<p><strong>dLon</strong> : float</p>
+<blockquote>
+<div><p>distance in the direction of parallels [m]. Positive to the east</p>
+</div></blockquote>
+<p><strong>latitude: float</strong></p>
+<blockquote>
+<div><p>current latitude [deg], used to calculate the distance between
+meridians.</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>deltaLat, deltaLon</strong> : (float, float)</p>
+<blockquote class="last">
+<div><p>both in degrees. Sign convention: deltaLat positive to the north,
+deltaLon positive to the west.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.m2feet">
+<code class="descclassname">astra.global_tools.</code><code class="descname">m2feet</code><span class="sig-paren">(</span><em>lengthM</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.m2feet" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert a length in meters to feet.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.pa2mbar">
+<code class="descclassname">astra.global_tools.</code><code class="descname">pa2mbar</code><span class="sig-paren">(</span><em>pressPa</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.pa2mbar" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert a pressure in Pascal to millibar</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.prettySeconds">
+<code class="descclassname">astra.global_tools.</code><code class="descname">prettySeconds</code><span class="sig-paren">(</span><em>seconds</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.prettySeconds" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert seconds in hours, minutes and seconds.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><strong>hours, minutes, seconds</strong> : (float, float, float)</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="astra.global_tools.uv2dirspeed">
+<code class="descclassname">astra.global_tools.</code><code class="descname">uv2dirspeed</code><span class="sig-paren">(</span><em>u</em>, <em>v</em><span class="sig-paren">)</span><a class="headerlink" href="#astra.global_tools.uv2dirspeed" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert u and v wind components to wind direction and speed.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><p class="first"><strong>u</strong> : wind&#8217;s u-component [any units]</p>
+<blockquote>
+<div><p>v : wind&#8217;s v-component [any units]</p>
+</div></blockquote>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>windDirection, windSpeed</strong> : (float, float)</p>
+<blockquote class="last">
+<div><p>windDirection is in degrees clockwise from the north. windSpeed has
+the same units as input u and v.</p>
+</div></blockquote>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+           <div class="articleComments">
+            
+           </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+      
+        <a href="installation.html" class="btn btn-neutral" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017, Niccol&amp;ograve; Zapponi, Paul Chambers.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'./',
+            VERSION:'1.3.1',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="_static/jquery.js"></script>
+      <script type="text/javascript" src="_static/underscore.js"></script>
+      <script type="text/javascript" src="_static/doctools.js"></script>
+      <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+  
+
+  
+  
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+  
+
+  
+  
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.StickyNav.enable();
+      });
+  </script>
+   
+
+</body>
+</html>

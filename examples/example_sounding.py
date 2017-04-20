@@ -1,21 +1,13 @@
 """
-example_sounding.py
+Example Sounding based Simulation
+
 ASTRA High Altitude Balloon Flight Planner
 
-DESCRIPTION
---------------
-
-Example: Sounding based Simulation
-
 University of Southampton
-Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
-
-__author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
-
 from datetime import datetime
-
 from astra.simulator import *
+
 
 if __name__ == "__main__":
     simEnvironment = soundingEnvironment(debugging=False, log_to_file=False)
@@ -31,6 +23,7 @@ if __name__ == "__main__":
     simEnvironment.timeFromSounding = 3                     # hours
     simEnvironment.inflationTemperature = 10.5              # degC
     simEnvironment.dateAndTime = datetime.now()
+    # TODO: Add an example sounding file, with description of how to create one
     simEnvironment.loadSounding('/path/to/myFile.sounding')
 
     # Launch parameters
