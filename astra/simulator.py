@@ -112,7 +112,7 @@ class flight(object):
         and will be updated during preflight and then once per 'flight'.
         If FALSE, progress information about the simulation will be displayed
         on the terminal or command line.
-    
+
     Notes
     -----
     * The run() method takes all the necessary steps to run the simulation.
@@ -128,6 +128,7 @@ class flight(object):
                 balloonModel,
                 nozzleLift,
                 payloadTrainWeight,
+                maxFlightTime=18000,
                 parachuteModel=None,
                 numberOfSimRuns=10,
                 trainEquivSphereDiam=0.1,
@@ -157,7 +158,7 @@ class flight(object):
         self.ventingStart = ventingStart     # m (below the target altitude)
         self.excessPressureCoeff = excessPressureCoeff
         self.outputFile = outputFile
-        self.maxFlightTime = 18000
+        self.maxFlightTime = maxFlightTime
 
         # Note: the launch site latitude, longitude and elevation will be
         # fetched and stored as attributes from the environment object at
