@@ -290,10 +290,12 @@ class soundingEnvironment(environment):
 
         def process_sounding_data(PRESS, HGHT, TEMP, DRCT, SKNT):
             """
-            This is an internal method responsible for processing raw data fetched from the sounding file.
+            This is an internal method responsible for processing raw data
+            fetched from the sounding file.
 
-            It requires pressure, altitude, temperature, wind speed and direction as inputs.
-            All the inputs are cleaned up, prepared for interpolation, interpolated and then stored in the appropriate
+            It requires pressure, altitude, temperature, wind speed and
+            direction as inputs. All the inputs are cleaned up, prepared for
+            interpolation, interpolated and then stored in the appropriate
             variables.
 
             This method is independent of the sounding file format

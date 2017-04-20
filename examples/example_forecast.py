@@ -25,8 +25,8 @@ if __name__ == "__main__":
     #        time: tomorrow, this time
     launch_datetime = datetime.now() + timedelta(days=1)
     simEnvironment = forecastEnvironment(launchSiteLat=29.2108,        # deg
-                                         launchSiteLon = -81.0228,     # deg
-                                         launchSiteElev = 4,           # m
+                                         launchSiteLon=-81.0228,     # deg
+                                         launchSiteElev=4,           # m
                                          dateAndTime=launch_datetime,
                                          forceNonHD=True,
                                          debugging=True,
@@ -37,19 +37,18 @@ if __name__ == "__main__":
                        balloonGasType='Helium',
                        balloonModel='TA800',
                        nozzleLift=1,              # kg
-                       payloadTrainWeight = 0.433,                    # kg
+                       payloadTrainWeight=0.433,                    # kg
                        parachuteModel='SPH36',
                        numberOfSimRuns=10,
                        trainEquivSphereDiam=0.1,                    # m
                        floatingFlight=False,
-                       floatingAltitude = 30000,                      # m
-                       excessPressureCoeff = 1,
+                       floatingAltitude=30000,                      # m
+                       excessPressureCoeff=1,
                        outputFile=os.path.join('.', 'astra_output'),
                        debugging=True,
                        log_to_file=False)
 
-
-    #simFlight.maxFlightTime = 5*60*60
+    # simFlight.maxFlightTime = 5*60*60
 
     # Run the simulation
     simFlight.run()

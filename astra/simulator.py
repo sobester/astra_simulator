@@ -123,23 +123,22 @@ class flight(object):
         >>> my_flight_simulation.run()
     """
     def __init__(self,
-                environment,
-                balloonGasType,
-                balloonModel,
-                nozzleLift,
-                payloadTrainWeight,
-                maxFlightTime=18000,
-                parachuteModel=None,
-                numberOfSimRuns=10,
-                trainEquivSphereDiam=0.1,
-                floatingFlight=False,
-                floatingAltitude=None,
-                ventingStart=1000,
-                excessPressureCoeff=1.,
-                outputFile='',
-                debugging=False,
-                log_to_file=False,
-                progress_to_file=False):
+                 environment,
+                 balloonGasType,
+                 balloonModel,
+                 nozzleLift,
+                 payloadTrainWeight,
+                 parachuteModel=None,
+                 numberOfSimRuns=10,
+                 trainEquivSphereDiam=0.1,
+                 floatingFlight=False,
+                 floatingAltitude=None,
+                 ventingStart=1000,
+                 excessPressureCoeff=1.,
+                 outputFile='',
+                 debugging=False,
+                 log_to_file=False,
+                 progress_to_file=False):
         """
         Initialize all the parameters of the object and setup the debugging if
         required.
@@ -158,7 +157,7 @@ class flight(object):
         self.ventingStart = ventingStart     # m (below the target altitude)
         self.excessPressureCoeff = excessPressureCoeff
         self.outputFile = outputFile
-        self.maxFlightTime = maxFlightTime
+        self.maxFlightTime = 18000
 
         # Note: the launch site latitude, longitude and elevation will be
         # fetched and stored as attributes from the environment object at
