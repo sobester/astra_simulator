@@ -24,6 +24,7 @@ from. import wind_space_perturbation
 from . import global_tools as tools
 from . import GFS
 from types import MethodType
+import os
 
 # SETUP ERROR LOGGING AND DEBUGGING
 logger = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ class environment(object):
                  inflationTemperature=0.0,
                  UTC_offset=0.0,
                  debugging=False,
-                 log_to_file=False):
+                 load_on_init=False):
 
         # COMMON INTERFACE
 
@@ -99,7 +100,6 @@ class environment(object):
         self.dateAndTime = dateAndTime
         self.UTC_offset = UTC_offset
         self.debugging = debugging
-        self.file_logging = log_to_file
 
         self._UTC_time = None
 
@@ -114,14 +114,7 @@ class environment(object):
         else:
             log_lev = logging.WARNING
 
-        if log_to_file:
-            logging.basicConfig(filename='error.log',
-                filemode='a',
-                format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                datefmt='%H:%M:%S',
-                level=log_lev)
-        else:
-            logger.setLevel(log_lev)
+        logger.setLevel(log_lev)
 
     def getTemperature(self, lat, lon, alt, time):
         """Request the temperature for an input location and time.
@@ -242,11 +235,18 @@ class soundingEnvironment(environment):
                  inflationTemperature=0.0,
                  UTC_offset=0.,
                  debugging=False,
-                 log_to_file=False):
+                 load_on_init=False):
         """Initialize the soundingEnvironment object.
 
         See class documentation.
         """
+        # Initialize sounding-specific variables
+        self.distanceFromSounding = distanceFromSounding
+        self.timeFromSounding = timeFromSounding
+        self.maxAltitude = 50999
+        self.soundingFile = soundingFile
+
+        self._interpolationPrecision = 200
 
         # Run the environment class initialization first
         super(soundingEnvironment, self).__init__(
@@ -254,20 +254,12 @@ class soundingEnvironment(environment):
             launchSiteLat=launchSiteLat,
             launchSiteLon=launchSiteLon,
             launchSiteElev=launchSiteElev,
-            dateAndTime=dateandTime,
+            dateAndTime=dateAndTime,
             UTC_offset=UTC_offset,
             debugging=debugging,
-            log_to_file=log_to_file) 
+            load_on_init=load_on_init) 
 
-        # Initialize extra sounding-specific variables
-        self.distanceFromSounding = 0.0
-        self.timeFromSounding = 0.0
-        self.maxAltitude = 50999
-
-        self._interpolationPrecision = 200
-        self.loadSounding(soundingFile)
-
-    def loadSounding(self, soundingFile):
+    def load(self, progressHandler=None):
         """Load the sounding file and generate the atmospheric model.
 
         Data is validated upon loading. Once this is done, cubic spline
@@ -287,196 +279,12 @@ class soundingEnvironment(environment):
           one point in time, the lat, lon and time arguments for the get...
           methods are optional.
         """
+        soundingFile = self.soundingFile
 
-        def process_sounding_data(PRESS, HGHT, TEMP, DRCT, SKNT):
-            """
-            This is an internal method responsible for processing raw data
-            fetched from the sounding file.
-
-            It requires pressure, altitude, temperature, wind speed and
-            direction as inputs. All the inputs are cleaned up, prepared for
-            interpolation, interpolated and then stored in the appropriate
-            variables.
-
-            This method is independent of the sounding file format
-            """
-
-            # Convert to Numpy arrays
-            HGHT = numpy.array(HGHT)
-            PRESS = numpy.array(PRESS)
-            TEMP = numpy.array(TEMP)
-            DRCT = numpy.array(DRCT)
-            SKNT = numpy.array(SKNT)
-
-            # Remove duplicate altitudes and trim the other data accordingly
-            HGHT, indexes = numpy.unique(HGHT, return_index=True)
-            PRESS = PRESS[indexes]
-            TEMP = TEMP[indexes]
-            DRCT = DRCT[indexes]
-            SKNT = SKNT[indexes]
-
-            logger.debug('Duplicate altitudes removed.')
-
-            # Remove NaN entries, if any
-            nanValidator = numpy.array([HGHT, PRESS, TEMP, DRCT, SKNT])
-            nanValidator.transpose()
-            nanFree = nanValidator[~numpy.isnan(nanValidator).any(1)]
-            nanFree.transpose()
-            HGHT = numpy.array(nanFree[0])
-            PRESS = numpy.array(nanFree[1])
-            TEMP = numpy.array(nanFree[2])
-            DRCT = numpy.array(nanFree[3])
-            SKNT = numpy.array(nanFree[4])
-
-            logger.debug('NaN entries removed.')
-
-            # _______________________________________________________________ #
-            # Add missing data if launch site elevation or max altitude are out
-            # of sounding bounds
-
-            # If the elevation is lower than the lower bound of data, copy the
-            # lowest data available and use it for the launch site elevation.
-            if self.launchSiteElev < HGHT[0]:
-                HGHT = numpy.insert(HGHT, 0, self.launchSiteElev)
-                PRESS = numpy.insert(PRESS, 0, PRESS[0])
-                TEMP = numpy.insert(TEMP, 0, TEMP[0])
-                DRCT = numpy.insert(DRCT, 0, DRCT[0])
-                SKNT = numpy.insert(SKNT, 0, SKNT[0])
-                logger.debug('Launch site elevation out of bounds. Low altitude data generated.')
-
-            # If the maxAltitude is higher than the upper bound of data, fill
-            # the missing altitude levels in with ISA data
-            if self.maxAltitude > HGHT[-1]:
-                newHeights = numpy.arange(HGHT[-1] + 1, self.maxAltitude + 1,
-                    (self.maxAltitude - HGHT[-1] - 1) / 20.)
-                HGHTTEMP = numpy.append(HGHT, newHeights[3:])
-                for newTempHeight in newHeights[3:]:
-                    # Calculate new temperatures and pressures.
-                    _, newTemp, _, newPress, _ = tools.ISAatmosphere(
-                        altitude=tools.m2feet(newTempHeight))
-                    TEMP = numpy.append(TEMP, newTemp)
-                    PRESS = numpy.append(PRESS, newPress)
-
-                if self.maxAltitude > 25000 and HGHT[-1] < 25000:
-                    HGHTSKNT = numpy.append(HGHT, [25000, self.maxAltitude])
-                    SKNT = numpy.append(SKNT, [0, 0])
-                else:
-                    HGHTSKNT = numpy.append(HGHT, [self.maxAltitude])
-                    SKNT = numpy.append(SKNT, [0])
-
-                HGHT = numpy.append(HGHT, self.maxAltitude)
-                DRCT = numpy.append(DRCT, DRCT[-1])
-
-                logger.debug('Max altitude out of bounds. High altitude data generated.')
-            else:
-                HGHTTEMP = HGHT
-                HGHTSKNT = HGHT
-
-            # _______________________________________________________________ #
-
-            # Check whether all fields have data, otherwise fill up vectors with NaN
-            if numpy.size(HGHT) == 0 or numpy.size(TEMP) == 0 or\
-                numpy.size(PRESS) == 0 or numpy.size(DRCT) == 0 or\
-                numpy.size(SKNT) == 0:
-                logger.error('There was a problem while processing the sounding.')
-                return False
-
-            # Interpolate data
-            logger.debug('Beginning interpolation...')
-
-            # TODO: Fix this part, it's unreadable
-            temperatureInterpolation = UnivariateSpline(HGHTTEMP, TEMP,
-                s=self._interpolationPrecision)
-            pressureInterpolation = UnivariateSpline(HGHTTEMP, PRESS,
-                s=self._interpolationPrecision)
-            windDirectionInterpolation = UnivariateSpline(HGHT, DRCT,
-                s=self._interpolationPrecision)
-            windSpeedInterpolation = UnivariateSpline(HGHTSKNT, SKNT,
-                s=self._interpolationPrecision)
-
-            def getTemperature(*args):
-                if len(args) == 1:
-                    return temperatureInterpolation(args[0])
-                elif len(args) == 4:
-                    return temperatureInterpolation(args[2])
-                else:
-                    return numpy.nan
-
-            def getPressure(*args):
-                if len(args) == 1:
-                    return pressureInterpolation(args[0])
-                elif len(args) == 4:
-                    return pressureInterpolation(args[2])
-                else:
-                    return numpy.nan
-
-            def getWindDirection(*args):
-                if len(args) == 1:
-                    return windDirectionInterpolation(args[0])
-                elif len(args) == 4:
-                    return windDirectionInterpolation(args[2])
-                else:
-                    return numpy.nan
-
-            def getWindSpeed(*args):
-                if len(args) == 1:
-                    return windSpeedInterpolation(args[0])
-                elif len(args) == 4:
-                    return windSpeedInterpolation(args[2])
-                else:
-                    return numpy.nan
-
-            # Store the interpolators in the correct variables
-            self.getTemperature = getTemperature
-            self.getPressure = getPressure
-            self.getWindDirection = getWindDirection
-            self.getWindSpeed = getWindSpeed
-
-            logger.debug('Interpolation completed. Preparing derived functions...')
-
-            # Initialize derived functions
-            AirMolecMass = 0.02896
-            GasConstant = 8.31447
-            standardTempRankine = tools.c2kel(15) * (9. / 5)
-            Mu0 = 0.01827 # Mu 0 (15 deg) [cP]
-            C = 120 # Sutherland's Constant
-
-            def getDensity(*args):
-                if len(args) == 1:
-                    return self.getPressure(args[0]) * 100 * AirMolecMass / (
-                        GasConstant * tools.c2kel(self.getTemperature(args[0])))
-                elif len(args) == 4:
-                    return self.getPressure(args[0], args[1], args[2], args[3])\
-                        * 100 * AirMolecMass / (GasConstant * tools.c2kel(
-                            self.getTemperature(args[0],
-                                                args[1],
-                                                args[2],
-                                                args[3])))
-                else:
-                    return numpy.nan
-
-            def getViscosity(*args):
-                if len(args) == 1:
-                    tempRankine = tools.c2kel(self.getTemperature(args[0])) * (9. / 5)
-                    TTO = (tempRankine / standardTempRankine) ** 1.5 # T/TO [Rankine/Rankine]
-                    TR = ((0.555 * standardTempRankine) + C) / ((0.555 * tempRankine) + C)
-                    vcP = Mu0 * TTO * TR
-                    return vcP / 1000.
-                elif len(args) == 4:
-                    tempRankine = tools.c2kel(self.getTemperature(args[0],args[1], args[2], args[3])) * (9. / 5)
-                    TTO = (tempRankine / standardTempRankine) ** 1.5 # T/TO [Rankine/Rankine]
-                    TR = ((0.555 * standardTempRankine) + C) / ((0.555 * tempRankine) + C)
-                    vcP = Mu0 * TTO * TR
-                    return vcP / 1000.
-                else:
-                    return numpy.nan
-
-            self.getDensity = getDensity
-            self.getViscosity = getViscosity
-
-            logger.debug('All derived functions ready.')
-
-            return True
+        # create a null handler if input progressHandler is None:
+        if not progressHandler:
+            def progressHandler(*args):
+                return None
 
         if self.UTC_offset == 0:
             self.UTC_offset = tools.getUTCOffset(self.launchSiteLat,
@@ -486,36 +294,34 @@ class soundingEnvironment(environment):
         self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
         logger.debug('Using UTC time %s' % self._UTC_time.strftime('%d/%m/%y %H:%M'))
 
-        if soundingFile[-3:] == 'ftr':
+        ext = os.path.splitext(soundingFile)[1]
+        assert(ext.lower() in ['.ftr', '.sounding']),\
+            'Unknown sounding file format: {}. Should be .ftr or .sounding'.format(ext)
+
+        # Try to open the file
+        try:
+            datastream = open(soundingFile, 'r')
+            logger.debug('Sounding file successfully opened.')
+
+        except IOError:
+            logger.error('The sounding file you specified cannot be opened.')
+            raise
+            # Read it and split it in lines
+        filelines = datastream.readlines()
+        datastream.close()
+        # Check that data exists
+        assert(filelines), 'The sounding file is empty.'
+
+        # Initialize variables
+        PRESS = []
+        HGHT = []
+        TEMP = []
+        DRCT = []
+        SKNT = []
+
+        if ext == '.ftr':
             # READ THE .FTR INPUT FILE AND PASS ITS DATA TO THE
             # process_sounding_data(...) METHOD.
-
-            # Try to open the file
-            try:
-                datastream = open(soundingFile, 'r')
-
-                logger.debug('Sounding file successfully opened.')
-
-            except IOError:
-                logger.error('The sounding file you specified cannot be opened.')
-                return
-                # Read it and split it in lines
-            filelines = datastream.readlines()
-            datastream.close()
-
-            # Check that data exists
-            if not filelines:
-                logger.error('The sounding file you specified is empty.')
-                return
-
-            logger.debug('File reading completed.')
-
-            # Initialize variables
-            PRESS = []
-            HGHT = []
-            TEMP = []
-            DRCT = []
-            SKNT = []
 
             # Import data into variables
             filelines = filelines[1:] # Remove header
@@ -529,8 +335,10 @@ class soundingEnvironment(environment):
                     SKNT.append(float(lineEntries[6]))
 
             logger.debug('Data imported.')
+            progressHandler(0.5, 1)
 
-            if process_sounding_data(PRESS, HGHT, TEMP, DRCT, SKNT) is True:
+            if self._process_sounding_data(PRESS, HGHT, TEMP, DRCT, SKNT):
+                progressHandler(1.0, 1)
                 self._weatherLoaded = True
                 logger.debug('Weather successfully loaded.')
             else:
@@ -538,22 +346,9 @@ class soundingEnvironment(environment):
                 return
 
 
-        elif soundingFile[-8:] == 'sounding':
+        elif ext == '.sounding':
             # READ THE .SOUNDING INPUT FILE AND PASS ITS DATA TO THE
             # process_sounding_data(...) METHOD.
-
-            # Try to open the file
-            try:
-                datastream = open(soundingFile, 'r')
-
-                logger.debug('Sounding file successfully opened.')
-
-            except IOError:
-                logger.error('The sounding file you specified cannot be opened.')
-                return
-                # Read it and split it in lines
-            filelines = datastream.readlines()
-            datastream.close()
 
             # Check that data exists
             if not filelines:
@@ -561,13 +356,6 @@ class soundingEnvironment(environment):
                 return
 
             logger.debug('File reading completed.')
-
-            # Initialize variables
-            PRESS = []
-            HGHT = []
-            TEMP = []
-            DRCT = []
-            SKNT = []
 
             # Detect first line of useful data
             startLine = 0
@@ -595,17 +383,202 @@ class soundingEnvironment(environment):
 
             logger.debug('Data imported.')
 
-            if process_sounding_data(PRESS, HGHT, TEMP, DRCT, SKNT):
+            if self._process_sounding_data(PRESS, HGHT, TEMP, DRCT, SKNT):
                 self._weatherLoaded = True
                 logger.debug('Weather successfully loaded.')
             else:
                 self._weatherLoaded = False
                 return
 
-        else:
-            logger.error('Unknown sounding file format. File extension should be .ftr or .sounding')
-            self._weatherLoaded = False
+    def _process_sounding_data(self, PRESS, HGHT, TEMP, DRCT, SKNT):
+        """
+        This is an internal method responsible for processing raw data
+        fetched from the sounding file.
 
+        It requires pressure, altitude, temperature, wind speed and
+        direction as inputs. All the inputs are cleaned up, prepared for
+        interpolation, interpolated and then stored in the appropriate
+        variables.
+
+        This method is independent of the sounding file format
+        """
+
+        # Convert to Numpy arrays
+        HGHT = numpy.array(HGHT)
+        PRESS = numpy.array(PRESS)
+        TEMP = numpy.array(TEMP)
+        DRCT = numpy.array(DRCT)
+        SKNT = numpy.array(SKNT)
+
+        # Remove duplicate altitudes and trim the other data accordingly
+        HGHT, indexes = numpy.unique(HGHT, return_index=True)
+        PRESS = PRESS[indexes]
+        TEMP = TEMP[indexes]
+        DRCT = DRCT[indexes]
+        SKNT = SKNT[indexes]
+
+        logger.debug('Duplicate altitudes removed.')
+
+        # Remove NaN entries, if any
+        nanValidator = numpy.array([HGHT, PRESS, TEMP, DRCT, SKNT])
+        nanValidator.transpose()
+        nanFree = nanValidator[~numpy.isnan(nanValidator).any(1)]
+        nanFree.transpose()
+        HGHT = numpy.array(nanFree[0])
+        PRESS = numpy.array(nanFree[1])
+        TEMP = numpy.array(nanFree[2])
+        DRCT = numpy.array(nanFree[3])
+        SKNT = numpy.array(nanFree[4])
+
+        logger.debug('NaN entries removed.')
+
+        # _______________________________________________________________ #
+        # Add missing data if launch site elevation or max altitude are out
+        # of sounding bounds
+
+        # If the elevation is lower than the lower bound of data, copy the
+        # lowest data available and use it for the launch site elevation.
+        if self.launchSiteElev < HGHT[0]:
+            HGHT = numpy.insert(HGHT, 0, self.launchSiteElev)
+            PRESS = numpy.insert(PRESS, 0, PRESS[0])
+            TEMP = numpy.insert(TEMP, 0, TEMP[0])
+            DRCT = numpy.insert(DRCT, 0, DRCT[0])
+            SKNT = numpy.insert(SKNT, 0, SKNT[0])
+            logger.debug('Launch site elevation out of bounds. Low altitude data generated.')
+
+        # If the maxAltitude is higher than the upper bound of data, fill
+        # the missing altitude levels in with ISA data
+        if self.maxAltitude > HGHT[-1]:
+            newHeights = numpy.arange(HGHT[-1] + 1, self.maxAltitude + 1,
+                (self.maxAltitude - HGHT[-1] - 1) / 20.)
+            HGHTTEMP = numpy.append(HGHT, newHeights[3:])
+            for newTempHeight in newHeights[3:]:
+                # Calculate new temperatures and pressures.
+                _, newTemp, _, newPress, _ = tools.ISAatmosphere(
+                    altitude=tools.m2feet(newTempHeight))
+                TEMP = numpy.append(TEMP, newTemp)
+                PRESS = numpy.append(PRESS, newPress)
+
+            if self.maxAltitude > 25000 and HGHT[-1] < 25000:
+                HGHTSKNT = numpy.append(HGHT, [25000, self.maxAltitude])
+                SKNT = numpy.append(SKNT, [0, 0])
+            else:
+                HGHTSKNT = numpy.append(HGHT, [self.maxAltitude])
+                SKNT = numpy.append(SKNT, [0])
+
+            HGHT = numpy.append(HGHT, self.maxAltitude)
+            DRCT = numpy.append(DRCT, DRCT[-1])
+
+            logger.debug('Max altitude out of bounds. High altitude data generated.')
+        else:
+            HGHTTEMP = HGHT
+            HGHTSKNT = HGHT
+
+        # _______________________________________________________________ #
+
+        # Check whether all fields have data, otherwise fill up vectors with NaN
+        if numpy.size(HGHT) == 0 or numpy.size(TEMP) == 0 or\
+            numpy.size(PRESS) == 0 or numpy.size(DRCT) == 0 or\
+            numpy.size(SKNT) == 0:
+            logger.error('There was a problem while processing the sounding.')
+            return False
+
+        # Interpolate data
+        logger.debug('Beginning interpolation...')
+
+        # TODO: Fix this part, it's unreadable and difficult to debug
+        temperatureInterpolation = UnivariateSpline(HGHTTEMP, TEMP,
+            s=self._interpolationPrecision)
+        pressureInterpolation = UnivariateSpline(HGHTTEMP, PRESS,
+            s=self._interpolationPrecision)
+        windDirectionInterpolation = UnivariateSpline(HGHT, DRCT,
+            s=self._interpolationPrecision)
+        windSpeedInterpolation = UnivariateSpline(HGHTSKNT, SKNT,
+            s=self._interpolationPrecision)
+
+        def getTemperature(*args):
+            if len(args) == 1:
+                return temperatureInterpolation(args[0])
+            elif len(args) == 4:
+                return temperatureInterpolation(args[2])
+            else:
+                return numpy.nan
+
+        def getPressure(*args):
+            if len(args) == 1:
+                return pressureInterpolation(args[0])
+            elif len(args) == 4:
+                return pressureInterpolation(args[2])
+            else:
+                return numpy.nan
+
+        def getWindDirection(*args):
+            if len(args) == 1:
+                return windDirectionInterpolation(args[0])
+            elif len(args) == 4:
+                return windDirectionInterpolation(args[2])
+            else:
+                return numpy.nan
+
+        def getWindSpeed(*args):
+            if len(args) == 1:
+                return windSpeedInterpolation(args[0])
+            elif len(args) == 4:
+                return windSpeedInterpolation(args[2])
+            else:
+                return numpy.nan
+
+        # Store the interpolators in the correct variables
+        self.getTemperature = getTemperature
+        self.getPressure = getPressure
+        self.getWindDirection = getWindDirection
+        self.getWindSpeed = getWindSpeed
+
+        logger.debug('Interpolation completed. Preparing derived functions...')
+
+        # Initialize derived functions
+        AirMolecMass = 0.02896
+        GasConstant = 8.31447
+        standardTempRankine = tools.c2kel(15) * (9. / 5)
+        Mu0 = 0.01827 # Mu 0 (15 deg) [cP]
+        C = 120 # Sutherland's Constant
+
+        def getDensity(*args):
+            if len(args) == 1:
+                return self.getPressure(args[0]) * 100 * AirMolecMass / (
+                    GasConstant * tools.c2kel(self.getTemperature(args[0])))
+            elif len(args) == 4:
+                return self.getPressure(args[0], args[1], args[2], args[3])\
+                    * 100 * AirMolecMass / (GasConstant * tools.c2kel(
+                        self.getTemperature(args[0],
+                                            args[1],
+                                            args[2],
+                                            args[3])))
+            else:
+                return numpy.nan
+
+        def getViscosity(*args):
+            if len(args) == 1:
+                tempRankine = tools.c2kel(self.getTemperature(args[0])) * (9. / 5)
+                TTO = (tempRankine / standardTempRankine) ** 1.5 # T/TO [Rankine/Rankine]
+                TR = ((0.555 * standardTempRankine) + C) / ((0.555 * tempRankine) + C)
+                vcP = Mu0 * TTO * TR
+                return vcP / 1000.
+            elif len(args) == 4:
+                tempRankine = tools.c2kel(self.getTemperature(args[0],args[1], args[2], args[3])) * (9. / 5)
+                TTO = (tempRankine / standardTempRankine) ** 1.5 # T/TO [Rankine/Rankine]
+                TR = ((0.555 * standardTempRankine) + C) / ((0.555 * tempRankine) + C)
+                vcP = Mu0 * TTO * TR
+                return vcP / 1000.
+            else:
+                return numpy.nan
+
+        self.getDensity = getDensity
+        self.getViscosity = getViscosity
+
+        logger.debug('All derived functions ready.')
+
+        return True
 
     def perturbWind(self, numberOfFlights):
         """
@@ -742,6 +715,11 @@ class forecastEnvironment(environment):
         If TRUE, all the information available will be logged
     [log_to_file]: bool, optional (default False)
          If true, all error and debug logs will be stored in an error.log file
+    [load_on_init] : bool, optional (default False)
+        If True, the forecast will be downloaded when the environment object is
+        created. This is set to False by default, as the :obj:`flight` object
+        should preferably be used to load the forecast (input validation and
+        preflight checks should be done before expensive data download) 
 
     See Also
     --------
@@ -777,13 +755,19 @@ class forecastEnvironment(environment):
                  forceNonHD=False,
                  maxFlightTime=18000,
                  debugging=False,
-                 log_to_file=False,
-                 progressHandler=None):
+                 progressHandler=None,
+                 load_on_init=False):
         """
         Initialize the forecastEnvironment object
         """
+        # Initialize extra forecast-specific variables
+        self.forceNonHD = forceNonHD
+        self.maxFlightTime = maxFlightTime
 
-        # Run the environment class initialization first
+        self._GFSmodule = None
+
+        # This should be the last thing that is called on init, since the base
+        # (environment) class init calls self.load (if load_on_init is True)
         super(forecastEnvironment, self).__init__(
             inflationTemperature=inflationTemperature,
             launchSiteLat=launchSiteLat,
@@ -792,17 +776,9 @@ class forecastEnvironment(environment):
             dateAndTime=dateAndTime,
             UTC_offset=UTC_offset,
             debugging=debugging,
-            log_to_file=log_to_file)
+            load_on_init=load_on_init)
 
-        # Initialize extra forecast-specific variables
-        self.forceNonHD = forceNonHD
-        self.maxFlightTime = maxFlightTime
-
-        self._GFSmodule = None
-
-        self.loadForecast(progressHandler)
-
-    def loadForecast(self, progressHandler=None):
+    def load(self, progressHandler=None):
         """
         Create a link to the Global Forecast System and download the required
         atmospheric data.
@@ -835,7 +811,6 @@ class forecastEnvironment(environment):
         if self.dateAndTime is None:
             raise ValueError(
                 'The flight date and time has not been set and is required!')
-            return
 
         if self.UTC_offset == 0:
             self.UTC_offset = tools.getUTCOffset(
@@ -845,6 +820,12 @@ class forecastEnvironment(environment):
         self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
         logger.debug('Using UTC time %s' % self._UTC_time.strftime('%d/%m/%y %H:%M'))
 
+        # log the current parameters
+        logger.info('Preparing to download weather data for parameters:')
+        logger.debug("    Launch site Latitude: {}".format(self.launchSiteLat))
+        logger.debug("    Launch site Longitude: {}".format(self.launchSiteLon))
+        logger.debug("    Launch time: {}".format(self._UTC_time))
+
         # Setup the GFS link
         self._GFSmodule = GFS.GFS_Handler(self.launchSiteLat,
                                           self.launchSiteLon,
@@ -852,8 +833,7 @@ class forecastEnvironment(environment):
                                           HD=(not self.forceNonHD),
                                           forecast_duration=int(
                                             self.maxFlightTime / 3600.),
-                                          debugging=self.debugging,
-                                          log_to_file=self.file_logging)
+                                          debugging=self.debugging)
 
         # Connect to the GFS and download data
         if self._GFSmodule.downloadForecast(progressHandler):
@@ -866,6 +846,94 @@ class forecastEnvironment(environment):
         # Setup the standard environment data access functions
 
 
+        # Linearly interpolate all data downloaded from the GFS
+        pressureInterpolation, temperatureInterpolation,\
+            windDirectionInterpolation, windSpeedInterpolation = \
+                self._GFSmodule.interpolateData('press',
+                                                'temp',
+                                                'windrct',
+                                                'windspd')
+
+        self.getPressure = lambda lat, lon, alt, time: float(
+            pressureInterpolation(lat, lon, alt, self._GFSmodule.getGFStime(
+                time - timedelta(seconds=self.UTC_offset * 3600)))
+            )
+        self.getTemperature = lambda lat, lon, alt, time: float(
+            temperatureInterpolation(lat, lon, alt, self._GFSmodule.getGFStime(
+                time - timedelta(seconds=self.UTC_offset * 3600)))
+            )
+        self.getWindDirection = lambda lat, lon, alt, time: float(
+            windDirectionInterpolation(lat, lon, alt, self._GFSmodule.getGFStime(
+                time - timedelta(seconds=self.UTC_offset * 3600))))
+        self.getWindSpeed = lambda lat, lon, alt, time: float(
+            windSpeedInterpolation(lat, lon, alt, self._GFSmodule.getGFStime(
+                time - timedelta(seconds=self.UTC_offset * 3600))))
+
+        # Extra definitions for derived quantities (density and viscosity)
+        AirMolecMass = 0.02896
+        GasConstant = 8.31447
+        standardTempRankine = tools.c2kel(15) * (9. / 5)
+        Mu0 = 0.01827 # Mu 0 (15 deg) [cP]
+        C = 120 # Sutherland's Constant
+
+        self.getDensity = lambda lat, lon, alt, time: \
+            self.getPressure(lat, lon, alt, time) * 100 * AirMolecMass / (GasConstant * 
+                tools.c2kel(self.getTemperature(lat, lon, alt, time))
+            )
+
+        def viscosity(lat, lon, alt, time):
+            tempRankine = tools.c2kel(self.getTemperature(lat, lon, alt, time)) * (9. / 5)
+            TTO = (tempRankine / standardTempRankine) ** 1.5 # T/TO [Rankine/Rankine]
+            TR = ((0.555 * standardTempRankine) + C) / ((0.555 * tempRankine) + C)
+            vcP = Mu0 * TTO * TR
+            return vcP / 1000.
+
+        self.getViscosity = viscosity
+
+        self._weatherLoaded = True
+
+    def loadFromNOAAFiles(self, fileDict):
+        """Creates and stores the interpolator functions using data provided
+        in the file names described in input fileDict.
+
+        Parameters
+        ----------
+        fileDict : :obj:`dict`
+            A dictionary of noaa_name: filename pairs, indicating which file
+            should be used for each noaa variable. The following keys must be
+            defined in this dictionary: 'tmpprs' (Temperature), 
+            'hgtprs' (Altitude), 'ugrdprs' (U Winds), 'vgrdprs' (V Winds)
+        """
+
+        # Data validation
+        if self._weatherLoaded:
+            logger.warning(
+                'The weather was already loaded. All data will be overwritten.')
+
+        if self.UTC_offset == 0:
+            self.UTC_offset = tools.getUTCOffset(
+                self.launchSiteLat,self.launchSiteLon,self.dateAndTime)
+            logger.debug('Fetched time zone data about the launch site: UTC offset is %f hours' % self.UTC_offset)
+
+        self._UTC_time = self.dateAndTime - timedelta(seconds=self.UTC_offset * 3600)
+        logger.debug('Using UTC time %s' % self._UTC_time.strftime('%d/%m/%y %H:%M'))
+
+        # log the current parameters
+        logger.info('Preparing to download weather data for parameters:')
+        logger.debug("    Launch site Latitude: {}".format(self.launchSiteLat))
+        logger.debug("    Launch site Longitude: {}".format(self.launchSiteLon))
+        logger.debug("    Launch time: {}".format(self._UTC_time))
+
+        # LOAD THE DATA: curently HD is not allowed, since only the named noaa
+        # parameters are loaded from a file (different files are required for
+        # high altitude data in the case of an HD simulation).
+        self._GFSmodule = GFS.GFS_Handler.fromFiles(fileDict,
+            lat=self.launchSiteLat, lon=self.launchSiteLon,
+            date_time=self._UTC_time, HD=False,
+            forecast_duration=int(self.maxFlightTime / 3600.),
+            debugging=self.debugging)
+
+        # Setup the standard environment data access functions
         # Linearly interpolate all data downloaded from the GFS
         pressureInterpolation, temperatureInterpolation,\
             windDirectionInterpolation, windSpeedInterpolation = \

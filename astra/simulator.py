@@ -15,6 +15,7 @@ from datetime import timedelta
 from sys import stdout
 import os
 import logging
+import logging.handlers
 from six.moves import range, builtins
 import numpy
 from scipy.integrate import odeint
@@ -23,7 +24,6 @@ from .weather import forecastEnvironment, soundingEnvironment
 from . import global_tools as tools
 from . import drag_helium
 from . import available_balloons_parachutes
-
 
 # Pass through the @profile decorator if line profiler (kernprof) is not in use
 try:
@@ -128,6 +128,7 @@ class flight(object):
                  balloonModel,
                  nozzleLift,
                  payloadTrainWeight,
+                 maxFlightTime=18000,
                  parachuteModel=None,
                  numberOfSimRuns=10,
                  trainEquivSphereDiam=0.1,
@@ -157,7 +158,7 @@ class flight(object):
         self.ventingStart = ventingStart     # m (below the target altitude)
         self.excessPressureCoeff = excessPressureCoeff
         self.outputFile = outputFile
-        self.maxFlightTime = 18000
+        self.maxFlightTime = maxFlightTime
 
         # Note: the launch site latitude, longitude and elevation will be
         # fetched and stored as attributes from the environment object at
@@ -200,17 +201,39 @@ class flight(object):
 
         self._totalStepsForProgress = 0
 
+        # Fetch launch site information from the environment data
+        self.launchSiteLat = self.environment.launchSiteLat
+        self.launchSiteLon = self.environment.launchSiteLon
+        self.launchSiteElev = self.environment.launchSiteElev
+
         if debugging:
             log_lev = logging.DEBUG
         else:
             log_lev = logging.WARNING
 
         if log_to_file:
-            logging.basicConfig(filename='error.log',
-                            filemode='a',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
-                            level=log_lev)
+            # Reset the app logger handlers and reset basic config
+            # file handler (this may not be the best way to do this for all
+            # situations, but it should allow decent logging on the web app
+            # while not interrupting with general use of astra as a standalone
+            # library
+            for handler in logging.root.handlers[:]:
+                logging.root.removeHandler(handler)
+
+            # Set a maximum log file size of 5MB:
+            handler = logging.handlers.RotatingFileHandler('astra_py_error.log',
+                mode='a',
+                maxBytes=10*1024*1024)
+            formatter = logging.Formatter('%(asctime)s.%(msecs)d %(levelname)s:%(name)s %(message)s')
+            handler.setFormatter(formatter)
+
+            stream = logging.StreamHandler()
+            stream.setFormatter(formatter)
+
+            logging.basicConfig(handlers=[handler, stream], level=log_lev)
+
+            # rootlogger.addHandler(handler)
+            # rootlogger.setLevel(log_lev)
         else:
             logger.setLevel(log_lev)
 
@@ -226,6 +249,13 @@ class flight(object):
 
     # ----------------------------------------------------------------------
 
+    def optimizeTargetLandingSite(self, targetLon, targetLat,
+        windowStartDateTime, windowEndDateTime, launchSiteRadius):
+        """
+        """
+        raise NotImplementedError
+
+
     @profile
     def run(self):
         """
@@ -235,7 +265,11 @@ class flight(object):
 
         Returns 0 if the simulation succeeded, or the error number if there
         were errors. Check the error.log and the simulator's documentation for
-        a full description of the error(s).
+        a full description of the error(s)
+
+        Errors occurring during preflight will be raised, stopping execution
+        and delivering the full stack trace to both the stdout and the module
+        logger (named astra.simulator).
         """
         # Prepare progress file: try and create the file
         self._progressFile = os.path.splitext(self.outputFile)[0] +\
@@ -246,21 +280,21 @@ class flight(object):
         # _________________________________________________________________ #
         # PREFLIGHT SEQUENCE
 
-        self.preflight()
+        try:
+            self.preflight()
+        except:
+            logger.exception(
+                "Error during preflight validations and calculations:")
+            raise
 
-        if not self._preflightCompleted:
-            # Check whether the preflight was completed successfully
-            logger.error("""There was an error while performing the preflight
-                validations and calculations.""")
-            logger.error('The simulation was interrupted.')
-            return
         self.updateProgress(0.0, 0)
 
         # _________________________________________________________________ #
         # RUN THE FLIGHT SIMULATION
         for flightNumber in range(self.numberOfSimRuns):
             logger.debug('SIMULATING FLIGHT %d' % (flightNumber + 1))
-            self.fly(flightNumber)
+            result = self.fly(flightNumber)
+            self.results.append(result)
             self.updateProgress(
                 float(flightNumber + 1) / self._totalStepsForProgress, 0)
 
@@ -270,6 +304,51 @@ class flight(object):
         self.postflight()
         self.updateProgress(1.0, 0)
         return 0
+
+    def _validateFlightParams(self):
+        """Performs input validation.
+
+        To be used at both construction time and preflight checking, since the
+        user may have overwritten the flight parameters in this time. This
+        function is designed to fail and raise an error.
+        """
+        # _________________________________________________________________ #
+        # Variable validation
+        # _________________________________________________________________ #
+
+        if self.balloonGasType not in ['Helium', 'Hydrogen']:
+            logger.warning('{} is an invalid gas type'.format(
+                self.balloonGasType))
+            logger.warning("The calculation will carry on with Helium.")
+            self.balloonGasType = 'Helium'
+
+        if self.balloonModel not in available_balloons_parachutes.balloons:
+            raise ValueError("""
+                {} is an invalid balloon model.
+                See astra.available_balloons_parachutes""".format(
+                self.balloonModel))
+
+        if self.parachuteModel is not None and self.parachuteModel not in\
+           available_balloons_parachutes.parachutes:
+            raise ValueError("""{} is not a valid parachute name. Supported
+                models are None or %s""".format(
+                         available_balloons_parachutes.parachutes.keys())
+                )
+
+        if self.nozzleLift == 0.0:
+            raise ValueError('Nozzle lift cannot be zero!')
+
+        if self.payloadTrainWeight == 0.0:
+            raise ValueError('Payload train weight cannot be zero!')
+
+        if self.numberOfSimRuns == 0:
+            raise ValueError('The number of sim runs cannot be zero!')
+
+        if self.launchSiteLat == 0.0 or self.launchSiteLon == 0.0:
+            logger.warning('Warning: Are you sure you set the launch site location correctly?')
+
+        if self.nozzleLift <= self.payloadTrainWeight:
+            raise ValueError('The nozzle lift is too low for the balloon to climb! Adjust the nozzle lift.')
 
     @profile
     def preflight(self):
@@ -284,77 +363,9 @@ class flight(object):
         If successful, no errors are thrown. Enable debugging for detailed
         information.
         """
-
         logger.debug('Preflight sequence starting...')
 
-        # _________________________________________________________________ #
-        # Fetch launch site information from the environment data
-        self.launchSiteLat = self.environment.launchSiteLat
-        self.launchSiteLon = self.environment.launchSiteLon
-        self.launchSiteElev = self.environment.launchSiteElev
-
-        # _________________________________________________________________ #
-        # Variable validation
-        toBreak = False
-        if self.environment is None:
-            logger.error('Flight environment not defined!')
-            toBreak = True
-
-        if not self.environment._weatherLoaded\
-           and isinstance(self.environment, soundingEnvironment):
-            logger.error('Flight environment has not loaded weather data!')
-            toBreak = True
-
-        if self.balloonGasType not in ['Helium', 'Hydrogen']:
-            logger.warning('{} is an invalid gas type'.format(
-                self.balloonGasType))
-            logger.warning("The calculation will carry on with Helium.")
-            self.balloonGasType = 'Helium'
-
-        if self.balloonModel not in available_balloons_parachutes.balloons:
-            logger.error(
-                '{} is an invalid balloon model'.format(self.balloonModel))
-            logger.error('Supported models are %s. Please correct it.',
-                         available_balloons_parachutes.balloons.keys())
-            toBreak = True
-
-        if self.parachuteModel is not None and self.parachuteModel not in\
-           available_balloons_parachutes.parachutes:
-            logger.error('An invalid parachute model was found.')
-            logger.error('Supported models are None or %s. Please correct it.',
-                         available_balloons_parachutes.parachutes.keys())
-            toBreak = True
-
-        if self.nozzleLift == 0.0:
-            logger.error('Nozzle lift cannot be zero!')
-            toBreak = True
-
-        if self.payloadTrainWeight == 0.0:
-            logger.error('Payload train weight cannot be zero!')
-            toBreak = True
-
-        if self.numberOfSimRuns == 0:
-            logger.error('The number of sim runs cannot be zero!')
-            toBreak = True
-
-        if self.launchSiteLat == 0.0 or self.launchSiteLon == 0.0:
-            logger.warning('Warning: Are you sure you set the launch site location correctly?')
-        # if self.trainEquivSphereDiam == 0.0:
-        #     logger.error('The train equivalent sphere diameter cannot be zero!')
-        #     toBreak = True
-        if self.nozzleLift <= self.payloadTrainWeight:
-            logger.error(
-                'The nozzle lift is too low for the balloon to climb! Adjust the nozzle lift before continuing')
-            toBreak = True
-
-        # If the forecast hasn't been downloaded yet, do it now.
-        if not self.environment._weatherLoaded and isinstance(self.environment,
-            forecastEnvironment):
-            self.environment.maxFlightTime = self.maxFlightTime
-            self.environment.loadForecast(self.updateProgress)
-            if not self.environment._weatherLoaded:
-                logger.error('Cannot load forecast!')
-                toBreak = True
+        self._validateFlightParams()
 
         # Check if the output file can be written and create it. If not, stop
         # the preflight.
@@ -365,12 +376,12 @@ class flight(object):
             os.remove(self.outputFile)
         except IOError:
             if not os.path.isdir(self.outputFile):
-                logger.error('The output file cannot be created.\n')
-                toBreak = True
+                logger.exception('The output file cannot be created.\n')
+                raise
 
-        if toBreak:
-            logger.error('The simulation was interrupted.')
-            return
+        if not self.environment._weatherLoaded:
+            self.environment.maxFlightTime = self.maxFlightTime
+            self.environment.load(self.updateProgress)
 
         logger.debug('Flight parameters validation succeeded.')
         logger.debug('Beginning Preflight...')
@@ -469,7 +480,7 @@ class flight(object):
         logger.debug('Gas mass: %.4f' % self._gasMassAtInflation)
         logger.debug('Balloon volume at inflation: %.4f' %
                      self._balloonVolumeAtInflation)
-        logger.debug('Balloon diameter ad inflation: %.4f' %
+        logger.debug('Balloon diameter at inflation: %.4f' %
                      self._balloonDiaAtInflation)
 
         # In case it's a floating flight, calculate the gas mass and the
@@ -485,7 +496,7 @@ class flight(object):
         if self.floatingFlight:
             # Calculate the balloon characteristics at the floating altitude
             (self._gasMassAtFloat, self._balloonVolumeAtFloat,
-                self._balloonDiaAtFloat) = fools.liftingGasMass(
+                self._balloonDiaAtFloat) = ft.liftingGasMass(
                     # This is the Nozzle Lift, which has to be equal to the
                     # payload train weight for the balloon to float. If they
                     # are, the sum of the (vertical) forces is 0.
@@ -533,6 +544,19 @@ class flight(object):
 
         If successful, no errors are thrown. Enable debugging for detailed
         information.
+
+        Parameters
+        ----------
+        flightNumber : int
+            the number of the flight, to be used as the index for getting
+            Monte Carlo parameters initialised in preflight
+        storeResult : bool (default True)
+            if True, this function will append to self.results
+
+        Returns
+        -------
+        result : list of numpy array
+            arrays for flight number, time, 
         """
         # Check whether the preflight sequence was performed. If not, stop the
         # simulation.
@@ -888,20 +912,19 @@ class flight(object):
             # The results are:   flight number  time vector latitude profile
             #   longitude profile   altitude    burst index   burst altitude
             #   has burst
-            self.results.append(
-                [flightNumber + 1, timeVector, latitudeProfile,
-                longitudeProfile, solution_altitude, index,
-                 self._lastFlightBurstAlt, True])
+            result = [flightNumber + 1, timeVector, latitudeProfile,
+                      longitudeProfile, solution_altitude, index,
+                      self._lastFlightBurstAlt, True]
         else:
             # The results are:   flight number  time vector latitude profile
-            #   longitude profile   altitude   burst index  target altitude 
+            #   longitude profile   altitude   burst index  target altitude
             #   has burst
-            self.results.append(
-                [flightNumber + 1, timeVector, latitudeProfile,
-                longitudeProfile, solution_altitude, index,
-                 self.floatingAltitude, False])
+            result = [flightNumber + 1, timeVector, latitudeProfile,
+                      longitudeProfile, solution_altitude, index,
+                      self.floatingAltitude, False]
 
         logger.debug('Simulation completed.')
+        return result
 
     def write_JSON(self, filename):
         """
@@ -1273,7 +1296,6 @@ class flight(object):
         # os.path.isfile doesn't check if the file has been written recently.
         # logger.debug('Output file {} generated.')
 
-    @profile
     def postflight(self):
         """
         After all the simulations have been executed, this method puts the
@@ -1300,15 +1322,13 @@ class flight(object):
 
             for data_format in ['json', 'kml', 'kmz', 'csv', 'csv.zip']:
                 path = os.path.join(baseName, 'out' + '.' + data_format)
-                print(path)
                 self.write(path)
 
-        elif fileExtension == '.web':
+        elif data_format == '.web':
             # If file has extension web, store json, kml and csv.gz
 
             for data_format in ['json', 'kml', 'csv.zip']:
                 path = baseName + '.' + data_format
-                print(path)
                 self.write(path)
 
         else:
@@ -1340,7 +1360,6 @@ class flight(object):
         else:
             self.__init__()
 
-    @profile
     def updateProgress(self, value, action):
         """
         Update the progress file with the ratio of value and the total steps of
@@ -1352,13 +1371,14 @@ class flight(object):
         _totalStepsForProgress should be defined before executing this method
         for it to work properly.
         """
-
         if self._progressToFile or self._debugging:
             # Try to gain write permissions to the progress file
             try:
                 progFile = open(self._progressFile, 'w')
             except IOError:
-                logger.error('Cannot create output file.')
+                # In this case, opt for error rather than exception as failing
+                # to open the progress log is not a fatal error
+                logger.error('Cannot open progress file.')
                 return
 
             # Write to file

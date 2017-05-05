@@ -14,7 +14,8 @@ from math import floor, ceil
 from six.moves import range
 from six.moves.urllib.request import urlopen
 import logging
-
+import grequests
+import itertools
 import numpy
 from scipy.interpolate import UnivariateSpline
 
@@ -25,6 +26,34 @@ from .interpolate import Linear4DInterpolator
 logger = logging.getLogger(__name__)
 
 earthRadius = 6371009  # m
+
+
+def get_urldict_async(urls_dict, hooks_dict=None):
+    """An asynchronous helper function for making multiple url requests per
+    key in url_dict
+
+    Uses grequests to produce the requests concurrently.
+
+    Parameters
+    ----------
+    url_dict : dict of lists
+        (key: [url1, url2...]) pairs for logically related urls.
+
+    Returns
+    -------
+    results_dict: dict of list
+        (key: [reponse_text1, reponse_text2, ...]) for all keys in url_dict
+    """
+    # first get all urls as a list
+    urls_list = list(itertools.chain.from_iterable(urls_dict.values()))
+    reqs = (grequests.get(u, hooks=hooks_dict) for u in urls_list)
+    responses = grequests.map(reqs)
+    results = {r.url: r.text for r in responses}
+    # get the url expected at each location for each key in url_dict, then
+    # insert the retrieved data at this location
+    results_dict = {key: [results[url] for url in url_list] for key, url_list in urls_dict.items()}
+    return results_dict
+
 
 
 class GFS_Handler(object):
@@ -85,9 +114,13 @@ class GFS_Handler(object):
     >>> getTemp(51.2,0.46,32000,myGFSlink.getGFStime(
     >>>    datetime.now()+datetime.timedelta(days=1,seconds=3600)))
     """
+    weatherParameters = {'tmpprs': 'Temperature',
+                          'hgtprs': 'Altitude',
+                          'ugrdprs': 'U Winds',
+                          'vgrdprs': 'V Winds'}
 
     def __init__(self, lat, lon, date_time, HD=True, forecast_duration=4,
-        debugging=False, log_to_file=False):
+        debugging=False, progressHandler=None):
         # Initialize Parameters
         self.launchDateTime = date_time
         self.lat = lat
@@ -111,11 +144,14 @@ class GFS_Handler(object):
         self.temperatureMap = None
         self.windsMap = None
 
+        requestAllLongitudes = False
+        multipleRequests = False
+
         # Grid size setup
         # NOTE: Grid sizes are defined as the difference between the highest
         # and the lowest lat/lon requested, NOT the difference between the
         # highest and the requested point or the lowest and the requested point
-        if forecast_duration == 5:
+        if forecast_duration == 4:
             # Standard flight
             self.latGridSize = 6
             self.lonGridSize = 12
@@ -137,62 +173,277 @@ class GFS_Handler(object):
         if self.HD:
             self.latStep = 0.25
             self.lonStep = 0.25
+            # TODO: Using a derived class and storing it as an attribute for a
+            #   special case is a bad design pattern in general: This could be
+            #   avoided by using two gfs handlers in the weather class, or
+            #   downloading data for specific altitudes and lat/lonStep if
+            #   self.HD is True
             # Prepare download of high altitude SD data
             self._highAltitudeGFS = GFS_High_Altitude_Handler(lat,
-                lon, date_time, forecast_duration, debugging, log_to_file)
+                lon, date_time, forecast_duration, debugging)
             self._highAltitudePressure = None
         else:
             self.latStep = 0.5
             self.lonStep = 0.5
+
+        # This is the grid size converted to GFS units. It basically returns
+        # the same number if the gridSize is even, or it returns gridSize-1 if
+        # gridSize is odd. This is to get the right grid around the launch
+        # point.
+        latGridStep = (int(self.latGridSize) / 2) / self.latStep
+        lonGridStep = (int(self.lonGridSize) / 2) / self.lonStep
+
+        # ALTITUDE (Download ALL altitude levels available)
+        self.requestAltitude = {
+            True: [0, 25],
+            False: [0, 46]
+        }[self.HD];
+
+        # LATITUDE
+        targetLatitude = (round(self.lat) + 90) / self.latStep
+        self.requestLatitude = [targetLatitude - latGridStep, targetLatitude + latGridStep]
+
+        if self.HD:
+            # Limit latitude to +/- 90 degrees
+            if self.requestLatitude[0] < 0:
+                self.requestLatitude[0] = 0
+            if self.requestLatitude[1] > 720:
+                self.requestLatitude[1] = 720
+
+            # Request all longitudes if close to the poles
+            if self.requestLatitude[0] < 40 or self.requestLatitude[1] > 680:
+                requestAllLongitudes = True
+        else:
+        # Limit latitude to +/- 90 degrees
+            if self.requestLatitude[0] < 0:
+                self.requestLatitude[0] = 0
+            if self.requestLatitude[1] > 360:
+                self.requestLatitude[1] = 360
+
+            # Request all longitudes if close to the poles or if simulation is beyond 2 days
+            if self.requestLatitude[0] < 20 or self.requestLatitude[1] > 340 or self.maxFlightTime > 48:
+                requestAllLongitudes = True
+
+        # LONGITUDE
+        # Note: There is no need to check if the grid size is higher than the
+        # whole world, causing overlapping regions to only request data in the
+        # overlapped region, since a grid size approximately equal to half of
+        # the world is enough to hit the poles and therefore request worldwide
+        # data (longitudes are very close at the poles, hence it's worth
+        # keeping data for all of them)
+
+        if requestAllLongitudes:
+            self.requestLongitudes = {
+                True: [[0, 1439]],
+                False: [[0, 719]]
+            }[self.HD]
+        else:
+            if self.lon >= 0:
+                targetLongitude = round(self.lon) / self.lonStep
+            else:
+                targetLongitude = (360 - abs(round(self.lon))) / self.lonStep
+
+            self.requestLongitudes = [[targetLongitude - lonGridStep, targetLongitude + lonGridStep]]
+
+            # Check if the values are within the bounds and correct if needed
+            if self.HD:
+                if self.requestLongitudes[0][0] < 0:
+                    self.requestLongitudes[0][0] += 1440
+                if self.requestLongitudes[0][1] > 1439:
+                    self.requestLongitudes[0][1] -= 1440
+            else:
+                if self.requestLongitudes[0][0] < 0:
+                    self.requestLongitudes[0][0] += 720
+                if self.requestLongitudes[0][1] > 719:
+                    self.requestLongitudes[0][1] -= 720
+
+            # Check if crossing the Greenwich meridian and split the requests
+            # If the Greenwich meridian is being crossed, the left bound of the
+            # longitude interval will have a higher value than the right one
+            # (in HD: Western hemisphere [360:719], Eastern hemisphere 
+            # [0:359]), so if the difference between the right and the left one
+            # is negative, the Greenwich meridian is being crossed
+            if self.requestLongitudes[0][1] - self.requestLongitudes[0][0] < 0:
+                # SPLIT
+                self.requestLongitudes = {
+                    True: [[0, self.requestLongitudes[0][1]], [self.requestLongitudes[0][0], 1439]],
+                    False: [[0, self.requestLongitudes[0][1]], [self.requestLongitudes[0][0], 719]]
+                }[self.HD]
+
+        # The base URL depends on whether the HD service has been requested.
+        self.baseURL = {
+            True: 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p25/',
+            False: 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p50/'
+        }[self.HD]
 
         if debugging:
             log_lev = logging.DEBUG
         else:
             log_lev = logging.WARNING
 
-        if log_to_file:
-            logging.basicConfig(filename='error.log',
-                            filemode='a',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
-                            level=log_lev)
-        # else:
-        #     logger.setLevel(log_lev)
+        logger.setLevel(log_lev)
 
 
+    def _get_NOAA_REST_url(self, requestVar, requestLongitude, cycle, requestTime):
+        """
+        """
+        requestURL = '%sgfs%d%02d%02d/gfs_%s_%02dz.ascii?%s[%d:%d][%d:%d][%d:%d][%d:%d]' % (
+                self.baseURL,
+                cycle.year,
+                cycle.month,
+                cycle.day,
+                {True: '0p25', False: '0p50'}[self.HD],
+                cycle.hour,
+                requestVar,
+                requestTime[0], requestTime[1],
+                self.requestAltitude[0], self.requestAltitude[1],
+                self.requestLatitude[0], self.requestLatitude[1],
+                requestLongitude[0], requestLongitude[1]
+            )
+        return requestURL
 
-    def downloadForecast(self, progressHandler=None):
+    def _NOAA_request(self, requestVar, cycle, requestTime):
+        """
+        Parameters
+        ----------
+        requestVar : string
+            noaa identifier of the variable name:
+            'tmpprs': Temperature,
+            'hgtprs': 'Altitude',
+            'ugrdprs': 'U Winds',
+            'vgrdprs': 'V Winds'
+        requestLongitudes : list
+            list of the longitudes for which to make the request (usually one,
+            but two are required around the greenwich median)
+        cycle : :obj:`datetime.datetime`
+            The cycle datetime for which to obtain the forecast
+        """
+        dataResults = []
+
+        # Check if we need more than 1 request (ie if we are crossing
+        # the Greenwich meridian)
+        for requestLongitude in self.requestLongitudes:
+
+            requestURL = self._get_NOAA_REST_url(requestVar, requestLongitude, cycle, requestTime)
+
+            logger.debug('Requesting URL: %s' % requestURL)
+
+            try:
+                HTTPresponse = urlopen(requestURL)
+            except:
+                logger.exception(
+                    'Error while connecting to the GFS server.')
+                raise
+            dataResults.append(HTTPresponse.read().decode('utf-8'))
+        return dataResults
+
+    def _NOAA_request_all(self, cycle, requestTime, progressHandler):
+        results = {}
+        progressHandler(0, 1)
+        for ivar, requestVar in enumerate(self.weatherParameters.keys()):
+            dataResults = self._NOAA_request(requestVar,
+                                             cycle,
+                                             requestTime
+                                             )
+            if dataResults[-1][0] == "<":
+                # Data from this cycle is not available. Return an empty result
+                logger.debug('Cycle not available.')
+                return {}
+            else:
+                requestReadableName = self.weatherParameters[requestVar]
+                logger.debug('{} data downloaded'.format(
+                    requestReadableName))
+                progressHandler(1. / len(self.weatherParameters) * ivar, 1)
+
+            results[requestVar] = dataResults
+        return results
+
+    def _NOAA_request_all_async(self, cycle, requestTime, progressHandler):
+        """Collects all urls for noaa data requests for parameters in
+        self.weatherParameters, then submits a combined request asynchronously.
+
+        Offers a concurrent, asynchronous alternative to the standard approach
+        for getting urls one at a time, as is done with self._NOAA_request.
+        This method uses asyncio. See notes for benchmarking.
+
+        Parameters
+        ----------
+        requestLongitudes : list
+            list of the longitudes for which to make the request (usually one,
+            but two are required around the greenwich median)
+        cycle : :obj:`datetime.datetime`
+            The cycle datetime for which to obtain the forecast
+
+        Returns
+        -------
+        result : list of strings
+            The (utf-8) decoded response string from the request
+
+
+        Notes
+        -----
+        * This method has been benchmarked, and should be approximately 80% than
+        the standard method in self._NOAA_request.
+        * asyncio was also trialled, for which it was found that the
+        performance difference was about the same, on average. asyncio also
+        required code that was less readable, and that also hid log messages.
+        """
+        urls = {}
+        progressHandler(0, 1)
+
+        logger.debug('Requesting weather urls asynchronously: status will be sent to requests logger')
+
+        for var in self.weatherParameters.keys():
+            urls[var] = [self._get_NOAA_REST_url(var, reqLon, cycle, requestTime)
+                for reqLon in self.requestLongitudes]
+
+        progress_increment = 1./sum([len(url_list) for url_list in urls.values()])
+        # Have to keep a mutable progress dict to be updated by the hook
+        # function:
+        progress = [0]
+        def increment_progress(*args, **kwargs):
+            # Hook function that updates a progress file via progressHandler.
+            # args do nothing, but will be passed by the request hook anyway,
+            # so need to do a type of hack that will ignore those inputs
+            progress[0] += progress_increment
+            logger.debug('Updating Download progress: {}%% complete'.format(100*progress[0]))
+            progressHandler(progress[0], 1)
+
+        # Note: currently omiting the hook function, as it doesn't seem to
+        # write to the file after the first update
+        results = get_urldict_async(urls, hooks_dict={'response': increment_progress})
+
+        # Check only one returned values, since if one exists, then the cycle
+        # was available and all should exist:
+        if results[var][-1][0] == "<":
+            # Data from this cycle is not available. Return an empty result
+            logger.debug('Cycle not available.')
+            return {}
+        else:
+            return results
+
+
+    def downloadForecast(self, progressHandler=None, use_async=True):
         """
         Connect to the Global Forecast System and download the closest cycle
         available to the date_time required. The cycle date and time is stored
         in the object's cycleDateTime variable.
         
+        Parameters
+        ----------
+        [use_async] : bool (default True)
+            If true, this function will build a series of asynchronous requests
+
+
         Returns
         -------
         status : bool
             TRUE if the download was successful, FALSE otherwise.
         """
-
-        #######################################################################
-        # INITIALIZE DATA, OR RESET IT IF THEY ALREADY EXISTS
-        temperatureMatrix = None
-        geopotentialMatrix = None
-        uWindsMatrix = None
-        vWindsMatrix = None
-        temperatureMap = None
-        geopotentialMap = None
-        uWindsMap = None
-
-
-        #######################################################################
-        # EXTRA PARAMETERS
-        # The base URL depends on whether the HD service has been requested or not.
-        weatherParameters = ['tmpprs', 'hgtprs', 'ugrdprs', 'vgrdprs']
-        baseURL = {
-            True: 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p25/',
-            False: 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p50/'
-        }[self.HD]
-
+        # create a null handler if input progressHandler is None:
+        if not progressHandler:
+            def progressHandler(*args):
+                return None
 
         #######################################################################
         # INITIALIZE TIME HANDLERS AND CALCULATE MOST RECENT CYCLE AVAILABLE
@@ -209,106 +460,13 @@ class GFS_Handler(object):
         # These are the hours at which new forecast cycles are issued
         dailyCycles = [0, 6, 12, 18]
         # Determine which cycle issuing hour is the closest to the current one
+        # TODO: Fix this unreadable line: Is it trying to get the earliest
+        # before? What about 2300: does it go later on earlier?
         cycleTime = dailyCycles[numpy.digitize([currentDateTime.hour], dailyCycles)[0] - 1]
         latestCycleDateTime = datetime(currentDateTime.year,
                                        currentDateTime.month,
                                        currentDateTime.day,
                                        cycleTime)
-
-
-        #######################################################################
-        # INITIALIZE COMMON REQUEST PARAMETERS. These are lat, lon and alt and
-        # do not vary with each cycle. Perform some validation checks to see if
-        # they need to be limited (close to the poles) or two requests need to
-        # be made (close to the Greenwich meridian).
-        requestAllLongitudes = False
-        multipleRequests = False
-        # This is the grid size converted to GFS units. It basically returns
-        # the same number if the gridSize is even, or it returns gridSize-1 if
-        # gridSize is odd. This is to get the right grid around the launch
-        # point.
-        latGridStep = (int(self.latGridSize) / 2) / self.latStep
-        lonGridStep = (int(self.lonGridSize) / 2) / self.lonStep
-
-        # ALTITUDE (Download ALL altitude levels available)
-        requestAltitude = {
-        	True: [0, 25],
-        	False: [0, 46]
-        }[self.HD];
-
-        # LATITUDE
-        targetLatitude = (round(self.lat) + 90) / self.latStep
-        requestLatitude = [targetLatitude - latGridStep, targetLatitude + latGridStep]
-
-        if self.HD:
-            # Limit latitude to +/- 90 degrees
-            if requestLatitude[0] < 0:
-                requestLatitude[0] = 0
-            if requestLatitude[1] > 720:
-                requestLatitude[1] = 720
-
-            # Request all longitudes if close to the poles
-            if requestLatitude[0] < 40 or requestLatitude[1] > 680:
-                requestAllLongitudes = True
-        else:
-        # Limit latitude to +/- 90 degrees
-            if requestLatitude[0] < 0:
-                requestLatitude[0] = 0
-            if requestLatitude[1] > 360:
-                requestLatitude[1] = 360
-
-            # Request all longitudes if close to the poles or if simulation is
-            # beyond 2 days
-            if requestLatitude[0] < 20 or requestLatitude[1] > 340 or self.maxFlightTime > 48:
-                requestAllLongitudes = True
-
-        # LONGITUDE
-        # Note: There is no need to check if the grid size is higher than the
-        # whole world, causing overlapping regions to only request data in the
-        # overlapped region, since a grid size approximately equal to half of
-        # the world is enough to hit the poles and therefore request worldwide
-        # data (longitudes are very close at the poles, hence it's worth
-        # keeping data for all of them)
-
-        if requestAllLongitudes:
-            requestLongitude = {
-                True: [0, 1439],
-                False: [0, 719]
-            }[self.HD]
-        else:
-            if self.lon >= 0:
-                targetLongitude = round(self.lon) / self.lonStep
-            else:
-                targetLongitude = (360 - abs(round(self.lon))) / self.lonStep
-
-            requestLongitude = [targetLongitude - lonGridStep, targetLongitude + lonGridStep]
-
-            # Check if the values are within the bounds and correct if needed
-            if self.HD:
-                if requestLongitude[0] < 0:
-                    requestLongitude[0] += 1440
-                if requestLongitude[1] > 1439:
-                    requestLongitude[1] -= 1440
-            else:
-                if requestLongitude[0] < 0:
-                    requestLongitude[0] += 720
-                if requestLongitude[1] > 719:
-                    requestLongitude[1] -= 720
-
-            # Check if crossing the Greenwich meridian and split the requests
-            # If the Greenwich meridian is being crossed, the left bound of the
-            # longitude interval will have a higher value than the right one
-            # (in HD: Western hemisphere [360:719], Eastern hemisphere 
-            # [0:359]), so if the difference between the right and the left one
-            # is negative, the Greenwich meridian is being crossed
-            if requestLongitude[1] - requestLongitude[0] < 0:
-                # SPLIT
-                requestLongitude = {
-                    True: [[0, requestLongitude[1]], [requestLongitude[0], 1439]],
-                    False: [[0, requestLongitude[1]], [requestLongitude[0], 719]]
-                }[self.HD]
-                multipleRequests = True
-
 
         #######################################################################
         # TRY TO DOWNLOAD DATA WITH THE LATEST CYCLE. IF NOT AVAILABLE, TRY
@@ -321,16 +479,14 @@ class GFS_Handler(object):
         # become available, or a cycle is skipped. This means that data for the
         # latest cycle is not guaranteed to be available. If data is not
         # available, it tries with 1 cycle older, until one is found with data
-        # available. If no cycles are found, the method returns FALSE.
-        pastCycle = 0
-        while True:
-            thisCycle = latestCycleDateTime - timedelta(hours=pastCycle * 6)
-            self.cycleDateTime = thisCycle
-
+        # available. If no cycles are found, the method raises a runtime error.
+        for pastCycle in range(25):
             # This is just a flag to make sure that if no data is found, it
             # stops the whole download and re-starts the loop with an older
             # cycle.
-            thisCycleNotAvailable = False
+            logger.debug('Attempting to download cycle data.')
+            thisCycle = latestCycleDateTime - timedelta(hours=pastCycle * 6)
+            self.cycleDateTime = thisCycle
 
             # Initialize time parameter
             timeFromForecast = simulationDateTime - thisCycle
@@ -349,136 +505,65 @@ class GFS_Handler(object):
 
             ###################################################################
             # DOWNLOAD DATA FOR ALL PARAMETERS
+            if use_async:
+                results = self._NOAA_request_all_async(thisCycle, requestTime, progressHandler)
+            else:
+                results = self._NOAA_request_all(thisCycle, requestTime, progressHandler)
 
-            for requestVariable in weatherParameters:
+            if results:
+                break
+            else:
+                logger.debug('Moving to next cycle...')
+                continue           
 
-                if multipleRequests:
-                    numberOfRequests = 2
-                else:
-                    numberOfRequests = 1
+        if not results:
+            raise RuntimeError('No available GFS cycles found!')
 
-                dataResults = []
-
-                # Check if we need more than 1 request (ie if we are crossing
-                # the Greenwich meridian)
-                for req_number in range(numberOfRequests):
-
-                    if multipleRequests:
-                        thisRequestLongitude = requestLongitude[req_number]
-                    else:
-                        thisRequestLongitude = requestLongitude
-
-                    requestURL = '%sgfs%d%02d%02d/gfs_%s_%02dz.ascii?%s[%d:%d][%d:%d][%d:%d][%d:%d]' % (
-                        baseURL,
-                        thisCycle.year,
-                        thisCycle.month,
-                        thisCycle.day,
-                        {True: '0p25', False: '0p50'}[self.HD],
-                        thisCycle.hour,
-                        requestVariable,
-                        requestTime[0], requestTime[1],
-                        requestAltitude[0], requestAltitude[1],
-                        requestLatitude[0], requestLatitude[1],
-                        thisRequestLongitude[0], thisRequestLongitude[1]
-                    )
-
-                    logger.debug('Requesting URL: %s' % requestURL)
-
-                    try:
-                        HTTPresponse = urlopen(requestURL)
-                    except:
-                        logger.error('Error while connecting to the GFS server.')
-                        logger.error('URL: %s' % requestURL)
-                        return False
-                    dataResults.append(HTTPresponse.read().decode('utf-8'))
-
-                    if dataResults[-1][0] == "<":
-                        # Data from this cycle is not available. Try with the
-                        # earlier one.
-                        logger.debug('Cycle not available.')
-                        thisCycleNotAvailable = True
-                        break
-
-                if thisCycleNotAvailable:
-                    break
-
-                if requestVariable == 'tmpprs':
-                    temperatureMatrix, temperatureMap = self._generate_matrix(
-                        dataResults)
-                    logger.debug('Temperature data downloaded and processed.')
-                    if progressHandler is not None:
-                        progressHandler(0.25, 1)
-                elif requestVariable == 'hgtprs':
-                    geopotentialMatrix, geopotentialMap = \
-                        self._generate_matrix(dataResults)
-                    logger.debug('Altitude data downloaded and processed.')
-                    if progressHandler is not None:
-                        progressHandler(0.5, 1)
-                elif requestVariable == 'ugrdprs':
-                    uWindsMatrix, uWindsMap = self._generate_matrix(
-                        dataResults)
-                    logger.debug('U Winds data downloaded and processed.')
-                    if progressHandler is not None:
-                        progressHandler(0.75, 1)
-                elif requestVariable == 'vgrdprs':
-                    logger.debug('V Winds data downloaded and processed.')
-                    vWindsMatrix, vWindsMap = self._generate_matrix(
-                        dataResults)
-                    if progressHandler is not None:
-                        progressHandler(0.95, 1)
-
-            # Restart the loop if the data wasn't available.
-            if thisCycleNotAvailable:
-                if pastCycle == 24:
-                    logger.error('No GFS cycles available found!')
-                    return False
-                else:
-                    pastCycle += 1
-                    logger.debug('Moving to next cycle...')
-                    continue
-
-            # If it didn't break in the previous if statement, data was
-            # available and has been downloaded.
-            break
+        data_matrices = {}
+        data_maps = {}
+        for ivar, (requestVar, dataResults) in enumerate(results.items()):
+            # except with the data_matrices might be better)
+            # Convert the data to matrix and map and store progress
+            data_matrices[requestVar], data_maps[requestVar] =\
+                self._generate_matrix(dataResults)
 
         #######################################################################
         # PROCESS DATA AND PERFORM CONVERSIONS AS REQUIRED
 
         # Convert temperatures from Kelvin to Celsius
-        temperatureMatrix -= 273.15
+        data_matrices['tmpprs'] -= 273.15
 
         # Convert geopotential height to geometric altitude
-        altitudeMatrix = (geopotentialMatrix * earthRadius /
-            ( earthRadius - geopotentialMatrix ))
+        altitudeMatrix = (data_matrices['hgtprs'] * earthRadius /
+                          (earthRadius - data_matrices['hgtprs']))
 
         # Convert u and v winds to wind direction and wind speed matrices
 
         # Store the current shape of the 4D matrices
-        matrixShape = uWindsMatrix.shape
+        matrixShape = data_matrices['ugrdprs'].shape
         # Convert to KNOTS and the turn into direction and speed
         dirspeedWinds = list(map(tools.uv2dirspeed,
-            (uWindsMatrix * 1.9438445).ravel(),
-            (vWindsMatrix * 1.9438445).ravel()))
+            (data_matrices['ugrdprs'] * 1.9438445).ravel(),
+            (data_matrices['vgrdprs'] * 1.9438445).ravel()))
         # Extract results
         windDirectionMatrix = numpy.array(
             [dirspeed[0] for dirspeed in dirspeedWinds]).reshape(matrixShape)
         windSpeedMatrix = numpy.array(
             [dirspeed[1] for dirspeed in dirspeedWinds]).reshape(matrixShape)
 
-
-
         # Store results
-        self.temperatureData = temperatureMatrix
-        self.altitudeData = altitudeMatrix
+        self.temperatureData = data_matrices['tmpprs']
+        self.altitudeData = data_matrices['hgtprs']
         self.windDirData = windDirectionMatrix
         self.windSpeedData = windSpeedMatrix
 
-        self.temperatureMap = temperatureMap
-        self.altitudeMap = geopotentialMap
-        self.windsMap = uWindsMap
+        self.temperatureMap = data_maps['tmpprs']
+        self.altitudeMap = data_maps['hgtprs']
+        self.windsMap = data_maps['ugrdprs']
 
         # DOWNLOAD HIGH ALTITUDE 0.5 x 0.5 DATA
         if (self.HD):
+            logger.debug('Preparing to download high altitude forecast...')
             self._highAltitudeGFS.downloadForecast()
             self._highAltitudePressure = self._highAltitudeGFS.interpolateData('p')
 
@@ -486,6 +571,85 @@ class GFS_Handler(object):
 
         return True
 
+    @classmethod
+    def fromFiles(cls, fileDict, lat, lon, date_time, HD=False, **kwargs):
+        """
+        Parameters
+        ----------
+        fileDict : :obj:`dict`
+            A dictionary of noaa_name: filename pairs, indicating which file
+            should be used for each noaa variable. The following keys must be
+            defined in this dictionary: 'tmpprs' (Temperature), 
+            'hgtprs' (Altitude), 'ugrdprs' (U Winds), 'vgrdprs' (V Winds)
+
+        **kwargs : dict
+            The dictionary of keyword: value parameters to be passed to the
+            new GFS_Handler. It is the users responsibility to ensure that the
+            latitude, longitude, and all other parameters passed to this method
+            match those intended for the input data file; there is no obvious
+            way to obtain launch site from the noaa files.
+
+        Notes
+        -----
+        This method should be primarily used for testing
+        """
+        # Check that all weather parameters appear in the input dict
+        assert(all(k in fileDict for k in GFS_Handler.weatherParameters.keys())),\
+            'All NOAA parameter names must appear in input fileDict. See (self).weatherParameters'
+        module = cls(lat=lat, lon=lon, date_time=date_time, HD=HD, **kwargs)
+        data_matrices = {}
+        data_maps = {}
+
+        module.firstAvailableTime = date_time
+
+        for name, fname in fileDict.items():
+            requestReadableName = module.weatherParameters[name]
+            with open(fname, 'r', encoding="utf-8") as f:
+                dataResults = f.read()
+            # Convert the data to matrix and map and store progress. Note that
+            # this has to be passed as a list to generate_matrix, since it
+            # ordinarily allows for multiple longitude data streams if near
+            # the greenwich meridian.
+            data_matrices[name], data_maps[name] =\
+                module._generate_matrix([dataResults])
+            logger.debug('{} data downloaded and processed.'.format(
+                requestReadableName))
+
+        #######################################################################
+        # PROCESS DATA AND PERFORM CONVERSIONS AS REQUIRED
+
+        # Convert temperatures from Kelvin to Celsius
+        data_matrices['tmpprs'] -= 273.15
+
+        # Convert geopotential height to geometric altitude
+        altitudeMatrix = (data_matrices['hgtprs'] * earthRadius /
+                          (earthRadius - data_matrices['hgtprs']))
+
+        # Convert u and v winds to wind direction and wind speed matrices
+
+        # Store the current shape of the 4D matrices
+        matrixShape = data_matrices['ugrdprs'].shape
+        # Convert to KNOTS and the turn into direction and speed
+        dirspeedWinds = list(map(tools.uv2dirspeed,
+            (data_matrices['ugrdprs'] * 1.9438445).ravel(),
+            (data_matrices['vgrdprs'] * 1.9438445).ravel()))
+        # Extract results
+        windDirectionMatrix = numpy.array(
+            [dirspeed[0] for dirspeed in dirspeedWinds]).reshape(matrixShape)
+        windSpeedMatrix = numpy.array(
+            [dirspeed[1] for dirspeed in dirspeedWinds]).reshape(matrixShape)
+
+        # Store results
+        module.temperatureData = data_matrices['tmpprs']
+        module.altitudeData = data_matrices['hgtprs']
+        module.windDirData = windDirectionMatrix
+        module.windSpeedData = windSpeedMatrix
+
+        module.temperatureMap = data_maps['tmpprs']
+        module.altitudeMap = data_maps['hgtprs']
+        module.windsMap = data_maps['ugrdprs']
+
+        return module
 
     def interpolateData(self, *variables):
         """
@@ -509,7 +673,8 @@ class GFS_Handler(object):
 
         Notes
         -----
-        * The linear interpolation is based on the interpolate.Linear4DInterpolator class.
+        * The linear interpolation is based on the
+        interpolate.Linear4DInterpolator class.
 
         * Warning: the time parameter required by the Linear4DInterpolator
         objects must be in GFS units! Use the getGFStime(time) method for
@@ -518,7 +683,8 @@ class GFS_Handler(object):
 
         results = []
 
-        # Cycle through each variable requested and append the appropriate interpolator to the results list.
+        # Cycle through each variable requested and append the appropriate
+        # interpolator to the results list.
         for variable in variables:
             if variable in ('temp', 't', 'temperature'):
                 # Interpolate temperature
@@ -811,347 +977,20 @@ class GFS_Handler(object):
 class GFS_High_Altitude_Handler(GFS_Handler):
     def __init__(self, lat, lon, date_time, forecast_duration=4,
         debugging=False, log_to_file=False):
-        global logger
 
-        # Initialize Parameters
-        self.launchDateTime = date_time
-        self.lat = lat
-        self.lon = lon
-        self.maxFlightTime = forecast_duration
-        self.cycleDateTime = None
-        self.firstAvailableTime = None
+        super(GFS_High_Altitude_Handler, self).__init__(lat=lat,
+            lon=lon,
+            date_time=date_time,
+            forecast_duration=forecast_duration,
+            debugging=debugging,
+            HD=False)
 
-        # These are the 4D data matrices with all the information needed.
-        self.altitudeData = None
-        self.temperatureData = None
-        self.windDirData = None
-        self.windSpeedData = None
+        # Set the altitude to the higher levels, since the lower altitude
+        # handler covers most of the data
+        self.requestAltitude = [41, 46]
 
-        # These are variables storing the mapping criteria of the 4D matrices.
-        # They are arrays of dictionaries, one per dimension (i.e. axis) of the matrix.
-        # The dictionary keys are the latitude, longitude, pressure and time, while the values are the
-        # corresponding matrix data indices.
-        self.altitudeMap = None
-        self.temperatureMap = None
-        self.windsMap = None
 
-        # Grid size setup
-        # NOTE: Grid sizes are defined as the difference between the highest
-        # and the lowest lat/lon requested, NOT the difference between the
-        # highest and the requested point or the lowest and the requested point
-        if forecast_duration == 4:
-            # Standard flight
-            self.latGridSize = 6
-            self.lonGridSize = 12
-        else:
-            # Non-standard flight (floating or customized from command line)
-            self.latGridSize = 2 * ceil(0.1 * self.maxFlightTime + 0.6) + 3
-            self.lonGridSize = 2 * ceil(0.9 * self.maxFlightTime) + 3
-
-        self.HD = False
-        self.latStep = 0.5
-        self.lonStep = 0.5
-
-
-        if debugging:
-            log_lev = logging.DEBUG
-        else:
-            log_lev = logging.WARNING
-
-        if log_to_file:
-            logging.basicConfig(filename='error.log',
-                            filemode='a',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
-                            level=log_lev)
-        # else:
-        #     logger.setLevel(log_lev)
-
-
-    def downloadForecast(self, progressHandler=None):
-        """
-        Connect to the Global Forecast System and download the closest cycle
-        available to the date_time required.
-
-        The cycle date and time is stored in the object's cycleDateTime
-        variable. 
-
-        Returns
-        -------
-        status : bool
-            TRUE if the download was successful, FALSE otherwise.
-        """
-
-        #######################################################################
-        # INITIALIZE DATA, OR RESET IT IF THEY ALREADY EXISTS
-        temperatureMatrix = None
-        geopotentialMatrix = None
-        uWindsMatrix = None
-        vWindsMatrix = None
-        temperatureMap = None
-        geopotentialMap = None
-        uWindsMap = None
-
-
-        #######################################################################
-        # EXTRA PARAMETERS
-        # The base URL depends on whether the HD service has been requested.
-        weatherParameters = ['tmpprs', 'hgtprs', 'ugrdprs', 'vgrdprs']
-        baseURL = 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p50/'
-
-
-        #######################################################################
-        # INITIALIZE TIME HANDLERS AND CALCULATE MOST RECENT CYCLE AVAILABLE
-
-        simulationDateTime = self.launchDateTime
-        currentDateTime = datetime.now()
-
-        if simulationDateTime < currentDateTime:
-            # Simulating a flight in the past. In this case, use the simulation
-            # date time to calculate the cycles that need to be downloaded.
-            currentDateTime = simulationDateTime
-
-        # These are the hours at which new forecast cycles are issued
-        dailyCycles = [0, 6, 12, 18]
-        # Determine which cycle issuing hour is the closest to the current one
-        cycleTime = dailyCycles[numpy.digitize([currentDateTime.hour], dailyCycles)[0] - 1]
-        latestCycleDateTime = datetime(currentDateTime.year,
-                                       currentDateTime.month,
-                                       currentDateTime.day,
-                                       cycleTime)
-
-        #######################################################################
-        # INITIALIZE COMMON REQUEST PARAMETERS. These are lat, lon and alt and
-        # do not vary with each cycle. Perform some validation checks to see if
-        # they need to be limited (close to the poles) or two requests need to
-        # be made (close to the Greenwich meridian).
-        requestAllLongitudes = False
-        multipleRequests = False
-        # This is the grid size converted to GFS units. It basically returns
-        # the same number if the gridSize is even, or it returns gridSize-1 if
-        # gridSize is odd. This is to get the right grid around the launch
-        # point.
-        latGridStep = (int(self.latGridSize) / 2) / self.latStep
-        lonGridStep = (int(self.lonGridSize) / 2) / self.lonStep
-
-        # ALTITUDE (Download ALL altitude levels available)
-        requestAltitude = [41, 46]
-
-        # LATITUDE
-        targetLatitude = (round(self.lat) + 90) / self.latStep
-        requestLatitude = [targetLatitude - latGridStep, targetLatitude + latGridStep]
-
-        if requestLatitude[0] < 0:
-            requestLatitude[0] = 0
-        if requestLatitude[1] > 360:
-            requestLatitude[1] = 360
-
-        # Request all longitudes if close to the poles
-        if requestLatitude[0] < 6 or requestLatitude[1] > 354:
-            requestAllLongitudes = True
-
-        # LONGITUDE
-        # Note: There is no need to check if the grid size is higher than the
-        # whole world, causing overlapping regions to only request data in the
-        # overlapped region, since a grid size approximately equal to half of
-        # the world is enough to hit the poles and therefore request worldwide
-        # data (longitudes are very close at the poles, hence it's worth
-        # keeping data for all of them)
-
-        if requestAllLongitudes:
-            requestLongitude = [0, 719]
-        else:
-            if self.lon >= 0:
-                targetLongitude = round(self.lon) / self.lonStep
-            else:
-                targetLongitude = (360 - abs(round(self.lon))) / self.lonStep
-
-            requestLongitude = [targetLongitude - lonGridStep, targetLongitude + lonGridStep]
-
-            # Check if the values are within the bounds and correct if needed
-            if requestLongitude[0] < 0:
-                requestLongitude[0] += 720
-            if requestLongitude[1] > 719:
-                requestLongitude[1] -= 720
-
-            # Check if crossing the Greenwich meridian and split the requests
-            # If the Greenwich meridian is being crossed, the left bound of the
-            # longitude interval will have a higher value than the right one
-            # (in HD: Western hemisphere [360:719], Eastern hemisphere 
-            # [0:359]), so if the difference between the right and the left one
-            # is negative, the Greenwich meridian is being crossed
-            if requestLongitude[1] - requestLongitude[0] < 0:
-                # SPLIT
-                requestLongitude = [[0, requestLongitude[1]],
-                                    [requestLongitude[0], 719]]
-                multipleRequests = True
-
-
-        #######################################################################
-        # TRY TO DOWNLOAD DATA WITH THE LATEST CYCLE. IF NOT AVAILABLE, TRY
-        # WITH AN EARLIER ONE
-
-        # pastCycle is a variable that indicates how many cycles in the past
-        # we're downloading data from. It first tries with 0, indicating the
-        # most recent cycle: this is calculated, knowing that cycles are issued
-        # every six hours. Sometimes, however, it takes a few hours for data to
-        # become available, or a cycle is skipped. This means that data for the
-        # latest cycle is not guaranteed to be available. If data is not
-        # available, it tries with 1 cycle older, until one is found with data
-        # available. If no cycles are found, the method returns FALSE.
-        pastCycle = 0
-        while True:
-            thisCycle = latestCycleDateTime - timedelta(hours=pastCycle * 6)
-            self.cycleDateTime = thisCycle
-
-            # This is just a flag to make sure that if no data is found, it
-            # stops the whole download and re-starts the loop with an older
-            # cycle.
-            thisCycleNotAvailable = False
-
-            # Initialize time parameter
-            timeFromForecast = simulationDateTime - thisCycle
-            hoursFromForecast = timeFromForecast.total_seconds() / 3600.
-
-            # GFS time index for the first dataset to be requested
-            requestTime = floor(hoursFromForecast / 3.)
-
-            # This stores the actual time of the first dataset downloaded. It's
-            # going to be used to convert real time to GFS "time coordinates"
-            # (see getGFStime(time) function)
-            self.firstAvailableTime = self.cycleDateTime + timedelta(hours=requestTime * 3)
-
-            # Always download an extra time dataset
-            requestTime = [requestTime, requestTime + ceil(self.maxFlightTime / 3.) + 1]
-
-            ###################################################################
-            # DOWNLOAD DATA FOR ALL PARAMETERS
-
-            for requestVariable in weatherParameters:
-
-                if multipleRequests:
-                    numberOfRequests = 2
-                else:
-                    numberOfRequests = 1
-
-                dataResults = []
-
-                # Check if we need more than 1 request (ie if we are crossing
-                # the Greenwich meridian)
-                for req_number in range(numberOfRequests):
-
-                    if multipleRequests:
-                        thisRequestLongitude = requestLongitude[req_number]
-                    else:
-                        thisRequestLongitude = requestLongitude
-
-                    requestURL = '%sgfs%d%02d%02d/gfs_0p50_%02dz.ascii?%s[%d:%d][%d:%d][%d:%d][%d:%d]' % (
-                        baseURL,
-                        thisCycle.year,
-                        thisCycle.month,
-                        thisCycle.day,
-                        thisCycle.hour,
-                        requestVariable,
-                        requestTime[0], requestTime[1],
-                        requestAltitude[0], requestAltitude[1],
-                        requestLatitude[0], requestLatitude[1],
-                        thisRequestLongitude[0], thisRequestLongitude[1]
-                    )
-
-                    logger.debug('Requesting URL: %s' % requestURL)
-
-                    try:
-                        HTTPresponse = urlopen(requestURL)
-                    except:
-                        logger.error('Error while connecting to the GFS server.')
-                        logger.error('URL: %s' % requestURL)
-                        return False
-                    dataResults.append(HTTPresponse.read().decode('utf-8'))
-
-                    if dataResults[-1][0] == "<":
-                        # Data from this cycle is not available. Try with the
-                        # earlier one.
-                        logger.debug('Cycle not available.')
-                        thisCycleNotAvailable = True
-                        break
-
-                if thisCycleNotAvailable:
-                    break
-
-                if requestVariable == 'tmpprs':
-                    temperatureMatrix, temperatureMap = self._generate_matrix(
-                        dataResults)
-                    logger.debug('Temperature data downloaded and processed.')
-                elif requestVariable == 'hgtprs':
-                    geopotentialMatrix, geopotentialMap = \
-                        self._generate_matrix(dataResults)
-                    logger.debug('Altitude data downloaded and processed.')
-                elif requestVariable == 'ugrdprs':
-                    uWindsMatrix, uWindsMap = self._generate_matrix(
-                        dataResults)
-                    logger.debug('U Winds data downloaded and processed.')
-                elif requestVariable == 'vgrdprs':
-                    logger.debug('V Winds data downloaded and processed.')
-                    vWindsMatrix, vWindsMap = self._generate_matrix(
-                        dataResults)
-
-            # Restart the loop if the data wasn't available.
-            if thisCycleNotAvailable:
-                if pastCycle == 24:
-                    logger.error('No GFS cycles available found!')
-                    return False
-                else:
-                    pastCycle += 1
-                    logger.debug('Moving to next cycle...')
-                    continue
-
-            # If it didn't break in the previous if statement, data was
-            # available and has been downloaded.
-            break
-
-        #######################################################################
-        # PROCESS DATA AND PERFORM CONVERSIONS AS REQUIRED
-
-        # Convert temperatures from Kelvin to Celsius
-        temperatureMatrix -= 273.15
-
-        # Convert geopotential height to geometric altitude
-        altitudeMatrix = (geopotentialMatrix * earthRadius /
-            (earthRadius - geopotentialMatrix ))
-
-        # Convert u and v winds to wind direction and wind speed matrices
-
-        # Store the current shape of the 4D matrices
-        matrixShape = uWindsMatrix.shape
-        # Convert to KNOTS and the turn into direction and speed
-        dirspeedWinds = list(map(tools.uv2dirspeed,
-            (uWindsMatrix * 1.9438445).ravel(),
-            (vWindsMatrix * 1.9438445).ravel()))
-        # Extract results
-        windDirectionMatrix = numpy.array(
-            [dirspeed[0] for dirspeed in dirspeedWinds]).reshape(matrixShape)
-        windSpeedMatrix = numpy.array(
-            [dirspeed[1] for dirspeed in dirspeedWinds]).reshape(matrixShape)
-
-
-
-        # Store results
-        self.temperatureData = temperatureMatrix
-        self.altitudeData = altitudeMatrix
-        self.windDirData = windDirectionMatrix
-        self.windSpeedData = windSpeedMatrix
-
-        self.temperatureMap = temperatureMap
-        self.altitudeMap = geopotentialMap
-        self.windsMap = uWindsMap
-
-        # TODO: This doesn't make sense?
-        logger.debug('High altitude HD forecast successfully downloaded!')
-
-        return True
-
-
-class GFS_Map:
+class GFS_Map(object):
     """
     Private class used to store 4D mapping data for a specific parameter.
 
@@ -1213,7 +1052,7 @@ class GFS_Map:
 
         if self.revLatitude == data_map.revLatitude and self.revPressure == data_map.revPressure and self.revTime == data_map.revTime:
             # Join
-            self.revLongitude.update({key: value + lonLen for (key, value) in data_map.revLongitude.iteritems()})
+            self.revLongitude.update({key: value + lonLen for (key, value) in data_map.revLongitude.items()})
 
         else:
             logger.error("Map joining failed. Latitudes, Pressures and/or Times don't match between the two maps!")
@@ -1231,7 +1070,7 @@ class GFS_Map:
             logger.error("Map joining failed. Latitudes, Pressures and/or Times don't match between the two maps!")
 
         if self.revLatitude == data_map.revLatitude and self.revPressure == data_map.revPressure and self.revTime == data_map.revTime:
-            self.revLongitude = {key: value + lonLen for (key, value) in self.revLongitude.iteritems()}.update(
+            self.revLongitude = {key: value + lonLen for (key, value) in self.revLongitude.items()}.update(
                 data_map.revLongitude)
         else:
             logger.error("Map joining failed. Latitudes, Pressures and/or Times don't match between the two maps!")
@@ -1256,7 +1095,7 @@ class GFS_Map:
         ]
 
 
-class GFS_data_interpolator:
+class GFS_data_interpolator(object):
     """
     Private class used by GFS_Handler to interpolate data.
 

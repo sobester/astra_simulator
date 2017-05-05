@@ -2,12 +2,14 @@
 # @Author: p-chambers
 # @Date:   2016-11-17 17:32:25
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2016-11-18 15:12:31
+# @Last Modified time: 2017-04-24 11:59:22
 __all__ = ["flight_tools", "global_tools", "interpolate", "sim_manager",
             "simulator", "weather"]
 
 from . import simulator
 from . import weather
+
+from .simulator import flight
 
 
 import logging

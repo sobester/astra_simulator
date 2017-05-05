@@ -15,39 +15,58 @@ from astra.simulator import *
 
 parser = argparse.ArgumentParser(description="""Process inputs to the ASTRA high
     altitude balloon flight planner for simulation""")
-parser.add_argument('-x', type=float, help="Launch Site Longitude")
-parser.add_argument('-y', type=float, help="Launch Site Latitude")
-parser.add_argument('-z', type=float, help="Launch Site Elevation")
+requiredNamed = parser.add_argument_group('required named arguments')
+requiredNamed.add_argument('-x', type=float, help="Launch Site Longitude",
+    required=True)
+requiredNamed.add_argument('-y', type=float, help="Launch Site Latitude",
+    required=True)
+requiredNamed.add_argument('-z', type=float, help="Launch Site Elevation",
+    required=True)
 
-parser.add_argument('-t', type=str,
-                    help="Date and time, format DD/MM/YYYY hr:mins")
-parser.add_argument('-b', type=str,
-    help="Balloon type (see docs for astra.available_balloons_parachutes)")
-parser.add_argument('-g', type=str, help="Gas Type ('Helium'|'Hydrogen')")
-parser.add_argument('-n', type=float, help="Nozzle lift (kg)")
-parser.add_argument('-p', type=float, help="payloadTrainWeight")
-parser.add_argument('-c', type=float,
+requiredNamed.add_argument('-t', type=str,
+                           help="Date and time, format DD/MM/YYYY hr:mins",
+                           required=True)
+requiredNamed.add_argument('-b', type=str,
+    help="Balloon type (see docs for astra.available_balloons_parachutes)",
+    required=True)
+requiredNamed.add_argument('-g', type=str,
+    help="Gas Type ('Helium'|'Hydrogen')", required=True)
+requiredNamed.add_argument('-n', type=float, help="Nozzle lift (kg)",
+    required=True)
+requiredNamed.add_argument('-p', type=float, help="payloadTrainWeight",
+    required=True)
+requiredNamed.add_argument('-r', type=int, help="Number of MC runs (flights)",
+    required=True)
+
+# Not required arguments
+parser.add_argument('-c', type=str, default='',
     help="Parachute model (see docs for astra.available_balloons_parachutes)")
-parser.add_argument('-o', type=float, help="Output file name")
-parser.add_argument('-r', type=int, help="Number of MC runs (flights)")
+parser.add_argument('-o', type=str, default='', help="Output file name")
+
+parser.add_argument('-k', type=float, default=0.0,
+    help="Inflation Temperature (degC)")
+parser.add_argument('-d', type=float, default=0.1,
+    help="Train equivalent sphere diameter (m)")
+parser.add_argument('-l', type=float, default=18000, help="Max Flight Time")
+# Sounding related parameters
+parser.add_argument('--sounding', type=str, help="Sounding file name")
 parser.add_argument('-e', type=float, help="Distance from sounding (m)")
 parser.add_argument('-i', type=float, help="Time from sounding (hrs)")
-parser.add_argument('-k', type=float, help="Inflation Temperature (degC)")
-parser.add_argument('-h', type=float, help="Train equivalent sphere diameter (m)")
-parser.add_argument('-l', type=float, default=18000, help="Max Flight Time")
 
-# Optionals
-parser.add_argument('--sounding', type=str, help="Sounding file name")
-parser.add_argument('--floating', help="Select a floating flight")
+# Optional flags
+parser.add_argument('--floating', default=False, action='store_true',
+    help="Select a floating flight")
 parser.add_argument('--altitude', type=float, help="Floating Altitude (m)")
-parser.add_argument('--noHD', help="Force non HD weather data")
-parser.add_argument('--debug', help="Use debugging mode")
+parser.add_argument('--noHD', default=False, action='store_true',
+    help="Force non HD weather data")
+parser.add_argument('--debug', action='store_true', help="Use debugging mode")
 
 
-def main(argv):
+def main():
     global debug
 
     args = parser.parse_args()
+    print(args)
 
 
     if args.debug:
@@ -55,34 +74,28 @@ def main(argv):
     else:
         debug = False
 
-    # Initialize objects
-    soundingWxr = soundingEnvironment(debugging=debug, log_to_file=True)
-    forecastWxr = forecastEnvironment(debugging=debug, log_to_file=True)
-    simFlight = flight(debugging=debug, log_to_file=True, progress_to_file=True)
-
-    launch_datetime = datetime.strptime(arg, '%d/%m/%Y %H:%M')
+    launch_datetime = datetime.strptime(args.t, '%d/%m/%Y %H:%M')
 
     if args.sounding:
-        simEnvironment = soundingEnvironment(launchSiteLat=args.x,        # deg
-                                             launchSiteLon=args.y,     # deg
+        simEnvironment = soundingEnvironment(launchSiteLon=args.x,        # deg
+                                             launchSiteLat=args.y,     # deg
                                              launchSiteElev=args.z,        # m
                                              soundingFile=args.sounding,
                                              dateAndTime=launch_datetime,
                                              inflationTemperature=args.k,
                                              distanceFromSounding=args.e,
                                              timeFromSounding=args.i,
-                                             maxFlightTime=args.l,
-                                             forceNonHD=args.noHD,
                                              debugging=args.debug,
                                              )
     else:
-        simEnvironment = forecastEnvironment(launchSiteLat=args.x,        # deg
-                                             launchSiteLon=args.y,     # deg
+        simEnvironment = forecastEnvironment(launchSiteLon=args.x,        # deg
+                                             launchSiteLat=args.y,     # deg
                                              launchSiteElev=args.z,        # m
                                              inflationTemperature=args.k,
                                              dateAndTime=launch_datetime,
                                              forceNonHD=args.noHD,
                                              debugging=args.debug,
+                                             load_on_init=False
                                              )
     if args.floating:
         assert(args.altitude),\
@@ -112,8 +125,8 @@ def main(argv):
                        payloadTrainWeight=args.p,                    # kg
                        parachuteModel=args.c,
                        numberOfSimRuns=args.r,
-                       trainEquivSphereDiam=args.h,                    # m
-                       floatingFlight=args.f,
+                       trainEquivSphereDiam=args.d,                    # m
+                       floatingFlight=args.floating,
                        floatingAltitude=args.altitude,                      # m
                        excessPressureCoeff=1,
                        outputFile=args.o,
