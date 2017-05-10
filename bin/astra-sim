@@ -93,6 +93,7 @@ def main():
                                              launchSiteElev=args.z,        # m
                                              inflationTemperature=args.k,
                                              dateAndTime=launch_datetime,
+                                             forecastDuration=args.l/3600.,
                                              forceNonHD=args.noHD,
                                              debugging=args.debug,
                                              load_on_init=False
@@ -121,10 +122,10 @@ def main():
                        balloonGasType=args.g,
                        balloonModel=args.b,
                        nozzleLift=args.n,              # kg
-                       maxFlightTime=args.l,
                        payloadTrainWeight=args.p,                    # kg
                        parachuteModel=args.c,
                        numberOfSimRuns=args.r,
+                       maxFlightTime=args.l,
                        trainEquivSphereDiam=args.d,                    # m
                        floatingFlight=args.floating,
                        floatingAltitude=args.altitude,                      # m

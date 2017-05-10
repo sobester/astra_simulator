@@ -580,35 +580,7 @@ class soundingEnvironment(environment):
 
         return True
 
-    def perturbWind(self, numberOfFlights):
-        """
-        Perturb the wind profiles for the purpose of Monte Carlo simulations.
-
-        Given the numberOfFlights, this method generates N different perturbed
-        wind profiles, where N = numberOfFlights, and stores them in the
-        getMCWindDirection and getMCWindSpeed lists. The perturbation is based
-        on the distance and time from sounding and is performed by picking a
-        random experimentally-measured perturbation and applying it to each
-        wind profile.
-
-        Wind data should then be requested using the following syntax:
-
-            getMCWindDirection[flightNumber].getTemperature(lat,lon,alt,time)
-
-        where flightNumber should be in the range 0...numberOfFlights-1.
-
-        """
-
-        # Before anything, check that the weather is loaded.
-        if not self._weatherLoaded:
-            logger.error(
-                'Weather not loaded! You need to load a sounding or download weather before perturbing the wind!')
-            return
-
-        self.getMCWindDirection = []
-        self.getMCWindSpeed = []
-
-        def make_perturbedWind(iDevTime, iDevSpace, randomChance, resultType=None):
+    def make_perturbedWind(self, iDevTime, iDevSpace, randomChance, resultType=None):
             """
             Constructor function responsible for applying perturbations to wind
             profiles and returning closure functions.
@@ -674,6 +646,34 @@ class soundingEnvironment(environment):
 
             return perturbedWind
 
+    def perturbWind(self, numberOfFlights):
+        """
+        Perturb the wind profiles for the purpose of Monte Carlo simulations.
+
+        Given the numberOfFlights, this method generates N different perturbed
+        wind profiles, where N = numberOfFlights, and stores them in the
+        getMCWindDirection and getMCWindSpeed lists. The perturbation is based
+        on the distance and time from sounding and is performed by picking a
+        random experimentally-measured perturbation and applying it to each
+        wind profile.
+
+        Wind data should then be requested using the following syntax:
+
+            getMCWindDirection[flightNumber].getTemperature(lat,lon,alt,time)
+
+        where flightNumber should be in the range 0...numberOfFlights-1.
+
+        """
+
+        # Before anything, check that the weather is loaded.
+        if not self._weatherLoaded:
+            logger.error(
+                'Weather not loaded! You need to load a sounding or download weather before perturbing the wind!')
+            return
+
+        self.getMCWindDirection = []
+        self.getMCWindSpeed = []
+
         # Apply perturbations to flights
         for _ in range(numberOfFlights):
             # Pick a random deviation out of the available ones.
@@ -682,10 +682,12 @@ class soundingEnvironment(environment):
             randChance = numpy.random.random(4)
 
             # Perturb and store
-            self.getMCWindDirection.append(make_perturbedWind(devTime,
+            self.getMCWindDirection.append(self.make_perturbedWind(devTime,
                 devSpace, randChance, 'direction'))
-            self.getMCWindSpeed.append(make_perturbedWind(devTime, devSpace,
+            self.getMCWindSpeed.append(self.make_perturbedWind(devTime, devSpace,
                 randChance, 'speed'))
+
+        return None
 
 
 class forecastEnvironment(environment):
@@ -753,7 +755,7 @@ class forecastEnvironment(environment):
                  UTC_offset=0,
                  inflationTemperature=0.0,
                  forceNonHD=False,
-                 maxFlightTime=18000,
+                 forecastDuration=4,
                  debugging=False,
                  progressHandler=None,
                  load_on_init=False):
@@ -762,7 +764,7 @@ class forecastEnvironment(environment):
         """
         # Initialize extra forecast-specific variables
         self.forceNonHD = forceNonHD
-        self.maxFlightTime = maxFlightTime
+        self.forecastDuration = forecastDuration
 
         self._GFSmodule = None
 
@@ -831,8 +833,8 @@ class forecastEnvironment(environment):
                                           self.launchSiteLon,
                                           self._UTC_time,
                                           HD=(not self.forceNonHD),
-                                          forecast_duration=int(
-                                            self.maxFlightTime / 3600.),
+                                          forecastDuration=
+                                            self.forecastDuration,
                                           debugging=self.debugging)
 
         # Connect to the GFS and download data
@@ -930,7 +932,7 @@ class forecastEnvironment(environment):
         self._GFSmodule = GFS.GFS_Handler.fromFiles(fileDict,
             lat=self.launchSiteLat, lon=self.launchSiteLon,
             date_time=self._UTC_time, HD=False,
-            forecast_duration=int(self.maxFlightTime / 3600.),
+            forecastDuration=forecastDuration,
             debugging=self.debugging)
 
         # Setup the standard environment data access functions

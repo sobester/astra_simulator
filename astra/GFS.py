@@ -76,7 +76,7 @@ class GFS_Handler(object):
     date_time : :obj:`datetime.datetime.`
         UTC time of the required forecast (min 30 days from today, max 10 days
         from latest cycle issuing time, see warning above).
-    [forecast_duration] : scalar (default 4)
+    [forecastDuration] : scalar (default 4)
         the duration in hours of the forecast data required.
     [HD] : bool (default True)
         if FALSE, non-HD forecast will be downloaded. Otherwise, HD forecast
@@ -119,13 +119,13 @@ class GFS_Handler(object):
                           'ugrdprs': 'U Winds',
                           'vgrdprs': 'V Winds'}
 
-    def __init__(self, lat, lon, date_time, HD=True, forecast_duration=4,
+    def __init__(self, lat, lon, date_time, HD=True, forecastDuration=4,
         debugging=False, progressHandler=None):
         # Initialize Parameters
         self.launchDateTime = date_time
         self.lat = lat
         self.lon = lon
-        self.maxFlightTime = forecast_duration
+        self.forecastDuration = forecastDuration
         self.HD = HD
         self.cycleDateTime = None
         self.firstAvailableTime = None
@@ -151,14 +151,14 @@ class GFS_Handler(object):
         # NOTE: Grid sizes are defined as the difference between the highest
         # and the lowest lat/lon requested, NOT the difference between the
         # highest and the requested point or the lowest and the requested point
-        if forecast_duration == 4:
+        if forecastDuration == 4:
             # Standard flight
             self.latGridSize = 6
             self.lonGridSize = 12
         else:
             # Non-standard flight (floating or customized from command line)
-            self.latGridSize = 2 * ceil(0.1 * self.maxFlightTime + 0.6) + 3
-            self.lonGridSize = 2 * ceil(0.9 * self.maxFlightTime) + 3
+            self.latGridSize = 2 * ceil(0.1 * self.forecastDuration + 0.6) + 3
+            self.lonGridSize = 2 * ceil(0.9 * self.forecastDuration) + 3
 
         # Automatically switch to non HD if close to the poles, as all the
         # longitudes will be downloaded
@@ -166,7 +166,7 @@ class GFS_Handler(object):
             self.HD = False
 
         # Force non HD weather if requested data is too high
-        if self.latGridSize * self.lonGridSize * ceil(self.maxFlightTime / 3.) > 250:
+        if self.latGridSize * self.lonGridSize * ceil(self.forecastDuration / 3.) > 250:
             self.HD = False
 
         # HD/SD forecast setup
@@ -180,7 +180,7 @@ class GFS_Handler(object):
             #   self.HD is True
             # Prepare download of high altitude SD data
             self._highAltitudeGFS = GFS_High_Altitude_Handler(lat,
-                lon, date_time, forecast_duration, debugging)
+                lon, date_time, forecastDuration, debugging)
             self._highAltitudePressure = None
         else:
             self.latStep = 0.5
@@ -221,7 +221,7 @@ class GFS_Handler(object):
                 self.requestLatitude[1] = 360
 
             # Request all longitudes if close to the poles or if simulation is beyond 2 days
-            if self.requestLatitude[0] < 20 or self.requestLatitude[1] > 340 or self.maxFlightTime > 48:
+            if self.requestLatitude[0] < 20 or self.requestLatitude[1] > 340 or self.forecastDuration > 48:
                 requestAllLongitudes = True
 
         # LONGITUDE
@@ -338,6 +338,8 @@ class GFS_Handler(object):
         return dataResults
 
     def _NOAA_request_all(self, cycle, requestTime, progressHandler):
+        """
+        """
         results = {}
         progressHandler(0, 1)
         for ivar, requestVar in enumerate(self.weatherParameters.keys()):
@@ -428,12 +430,15 @@ class GFS_Handler(object):
         Connect to the Global Forecast System and download the closest cycle
         available to the date_time required. The cycle date and time is stored
         in the object's cycleDateTime variable.
-        
+
         Parameters
         ----------
+        [progressHandler] : function (default None)
+            Function that handles the download progress. This is usually
+            the member function astra.flight.updateProgress.
+
         [use_async] : bool (default True)
             If true, this function will build a series of asynchronous requests
-
 
         Returns
         -------
@@ -493,6 +498,7 @@ class GFS_Handler(object):
             hoursFromForecast = timeFromForecast.total_seconds() / 3600.
 
             # GFS time index for the first dataset to be requested
+            # (1 GFS index = three hours)
             requestTime = floor(hoursFromForecast / 3.)
 
             # This stores the actual time of the first dataset downloaded. It's
@@ -501,7 +507,10 @@ class GFS_Handler(object):
             self.firstAvailableTime = self.cycleDateTime + timedelta(hours=requestTime * 3)
 
             # Always download an extra time dataset
-            requestTime = [requestTime, requestTime + ceil(self.maxFlightTime / 3.) + 1]
+            # PChambers note: probably +1 because of the index slicing system
+            # used on the GFS servers, i.e., times 0:5 will get times
+            # 0, 1, 2, 3 and 4
+            requestTime = [requestTime, requestTime + ceil(self.forecastDuration / 3.) + 1]
 
             ###################################################################
             # DOWNLOAD DATA FOR ALL PARAMETERS
@@ -975,13 +984,13 @@ class GFS_Handler(object):
 # additional class here, we just need to switch on standard definition settings
 # for the high altitude segment of the GFS_Handler downloadForecast
 class GFS_High_Altitude_Handler(GFS_Handler):
-    def __init__(self, lat, lon, date_time, forecast_duration=4,
+    def __init__(self, lat, lon, date_time, forecastDuration=4,
         debugging=False, log_to_file=False):
 
         super(GFS_High_Altitude_Handler, self).__init__(lat=lat,
             lon=lon,
             date_time=date_time,
-            forecast_duration=forecast_duration,
+            forecastDuration=forecastDuration,
             debugging=debugging,
             HD=False)
 
