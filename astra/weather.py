@@ -76,7 +76,6 @@ class environment(object):
     See Also
     --------
     astra.global_tools.getUTCOffset
-
     """
 
     def __init__(self,

@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 # @Author: p-chambers
 # @Date:   2016-11-17 17:32:25
-# @Last Modified by:   p-chambers
-# @Last Modified time: 2017-04-24 11:59:22
+# @Last Modified by:   Paul Chambers
+# @Last Modified time: 2017-05-10 22:03:57
 __all__ = ["flight_tools", "global_tools", "interpolate", "sim_manager",
-            "simulator", "weather"]
+            "simulator", "weather", "target_landing"]
 
 from . import simulator
 from . import weather
+from . import target_landing
 
 from .simulator import flight
 

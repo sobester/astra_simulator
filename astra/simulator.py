@@ -124,11 +124,11 @@ class flight(object):
         >>> my_flight_simulation.run()
     """
     def __init__(self,
-                 environment,
                  balloonGasType,
                  balloonModel,
                  nozzleLift,
                  payloadTrainWeight,
+                 environment=None,
                  maxFlightTime=18000,
                  parachuteModel=None,
                  numberOfSimRuns=10,
@@ -244,20 +244,24 @@ class flight(object):
     
     @environment.setter
     def environment(self, new_environment):
-        if not new_environment._weatherLoaded:
-            new_environment.load(self.updateProgress)
+        if new_environment:
 
-        self.launchSiteLat = new_environment.launchSiteLat
-        self.launchSiteLon = new_environment.launchSiteLon
-        self.launchSiteElev = new_environment.launchSiteElev
+            if not new_environment._weatherLoaded:
+                new_environment.load(self.updateProgress)
 
-        # Check if GFS is being used
-        if isinstance(new_environment, forecastEnvironment):
-            self._usingGFS = True
+            self.launchSiteLat = new_environment.launchSiteLat
+            self.launchSiteLon = new_environment.launchSiteLon
+            self.launchSiteElev = new_environment.launchSiteElev
+
+            # Check if GFS is being used
+            if isinstance(new_environment, forecastEnvironment):
+                self._usingGFS = True
+            else:
+                self._usingGFS = False
         else:
-            self._usingGFS = False
+            logger.warning("Empty environment loaded. Please load a valid environment")
         self._environment = new_environment
-    
+
 
     @property
     def balloonGasType(self):
