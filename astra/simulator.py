@@ -247,7 +247,11 @@ class flight(object):
         if new_environment:
 
             if not new_environment._weatherLoaded:
-                new_environment.load(self.updateProgress)
+                try:
+                    new_environment.load(self.updateProgress)
+                except:
+                    logger.exception("Environment loading failed: see traceback")
+                    raise
 
             self.launchSiteLat = new_environment.launchSiteLat
             self.launchSiteLon = new_environment.launchSiteLon
@@ -269,10 +273,13 @@ class flight(object):
 
     @balloonGasType.setter
     def balloonGasType(self, new_balloonGasType):
-        if new_balloonGasType not in ['Helium', 'Hydrogen']:
-            raise ValueError('{} is an invalid gas type'.format(
+        try:
+            self._gasMolecularMass = ft.MIXEDGAS_MOLECULAR_MASS[new_balloonGasType]
+        except:
+            logger.exception('{} is an invalid gas type'.format(
                 new_balloonGasType))
-        self._gasMolecularMass = ft.MIXEDGAS_MOLECULAR_MASS[new_balloonGasType]
+            raise
+
         self._balloonGasType = new_balloonGasType
 
     @property
@@ -281,22 +288,22 @@ class flight(object):
 
     @balloonModel.setter
     def balloonModel(self, new_balloonModel):
-        if new_balloonModel not in available_balloons_parachutes.balloons:
-            raise ValueError("""
-                {} is an invalid balloon model.
+
+        try:
+            balloon_params = available_balloons_parachutes.balloons[new_balloonModel]
+        except KeyError:
+            logger.exception("""{} is an invalid balloon model.
                 See astra.available_balloons_parachutes""".format(
                 new_balloonModel))
+            raise
+        self._balloonWeight = balloon_params[0]
 
-        self._balloonWeight = \
-            available_balloons_parachutes.balloons[new_balloonModel][0]
         self._meanBurstDia = (
             available_balloons_parachutes.meanToNominalBurstRatio *
-            available_balloons_parachutes.balloons[new_balloonModel][1]
+            balloon_params[1]
         )
-        self._weibull_lambda = \
-            available_balloons_parachutes.balloons[new_balloonModel][2]
-        self._weibull_k = \
-            available_balloons_parachutes.balloons[new_balloonModel][3]
+        self._weibull_lambda = balloon_params[2]
+        self._weibull_k = balloon_params[3]
 
         logger.debug("""Balloon performance: Mean burst diameter: %.4f,
             Lambda: %.4f, k: %4f""" % (
@@ -308,27 +315,25 @@ class flight(object):
 
     @parachuteModel.setter
     def parachuteModel(self, new_parachuteModel):
-        if new_parachuteModel not in\
-           available_balloons_parachutes.parachutes:
-            raise ValueError("""{} is not a valid parachute name. Supported
-                models are None or %s""".format(
-                         available_balloons_parachutes.parachutes.keys())
-                )
         # Configure the flight tools for the correct parachute
-        self.parachuteAref = \
+        try:
+            self.parachuteAref = \
                 available_balloons_parachutes.parachutes[new_parachuteModel]
+        except KeyError:
+            logger.exception("{} is not a valid parachute name. See astra.available_balloons_parachutes.parachutes")
         self._parachuteModel = new_parachuteModel
 
     @property
     def nozzleLift(self):
-
         return self._nozzleLift
 
     @nozzleLift.setter
     def nozzleLift(self, new_nozzleLift):
         if new_nozzleLift <= 0.0:
+            logger.error('Nozzle lift cannot be negative or zero.')
             raise ValueError('Nozzle lift cannot be negative or zero.')
-        if new_nozzleLift <= self.payloadTrainWeight:
+        elif new_nozzleLift <= self.payloadTrainWeight:
+            logger.error('The nozzle lift is too low for the balloon to climb! Adjust the nozzle lift.')
             raise ValueError('The nozzle lift is too low for the balloon to climb! Adjust the nozzle lift.')
         self._nozzleLift = new_nozzleLift
 
@@ -339,6 +344,7 @@ class flight(object):
     @payloadTrainWeight.setter
     def payloadTrainWeight(self, new_payloadTrainWeight):
         if new_payloadTrainWeight <= 0:
+            logger.error('Payload train weight cannot be zero!')
             raise ValueError('Payload train weight cannot be zero!')
         self._payloadTrainWeight = new_payloadTrainWeight
 
@@ -349,6 +355,7 @@ class flight(object):
     @numberOfSimRuns.setter
     def numberOfSimRuns(self, new_numberOfSimRuns):
         if new_numberOfSimRuns <= 0:
+            logger.error('Number of sim runs cannot be negative or zero.')
             raise ValueError('Number of sim runs cannot be negative or zero.')
         self._numberOfSimRuns = new_numberOfSimRuns
 
