@@ -273,6 +273,8 @@ class flight:
         self._totalDescendingMass = 0.0
         self._lastFlightBurstAlt = 0.0
         self.flightTools = flight_tools()
+        self.cutdown = False
+        self.cutdownAltitude = None
 
         self._totalStepsForProgress = 0
 
@@ -416,6 +418,7 @@ class flight:
 
         # Check if the output file can be written and create it. If not, stop the preflight.
         try:
+            logger.log("Creating output file {}".format(self.outputFile))
             out = open(self.outputFile, 'w')
             out.close()
             os.remove(self.outputFile)
@@ -610,6 +613,8 @@ class flight:
         self._currentTime = 0
         self._totalRuns = 0
 
+        print(self.cutdown, self.cutdownAltitude)
+
         def ode(y, t):
             """
             This is the right-hand side of the 2nd order ODE defining the vertical motion of the balloon.
@@ -618,6 +623,15 @@ class flight:
             # Extract inputs from array y
             altitude = y[0]
             ascentRate = y[1]
+
+            if self.cutdown and not self._lastFlightBurst:
+                if altitude > self.cutdownAltitude:
+                    # Burst the balloon
+                    logger.debug('Bursting the balloon at {}m altitude'.format(
+                        altitude))
+                    self._lastFlightBurst = True
+                    self._lastFlightBurstAlt = altitude
+                    return numpy.array([0.0, 0.0])
 
             # Calculate current position in time and space
             # This is used to fetch the correct atmospheric data if the GFS is being used.

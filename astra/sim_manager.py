@@ -64,8 +64,8 @@ def main(argv):
     soundingFile = None
 
     try:
-        opts, args = getopt.getopt(argv, "x:y:z:t:b:g:n:p:c:o:r:s:e:i:k:fa:h:l:",
-                                   ["sounding=", "float", "help", "debug", "noHD"])
+        opts, args = getopt.getopt(argv, "x:y:z:t:b:g:n:p:c:o:r:s:e:i:k:fa:h:l:C:",
+                                   ["sounding=", "cutdown", "float", "help", "debug", "noHD"])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -120,6 +120,10 @@ def main(argv):
             simFlight.floatingFlight = True
         elif opt in '-a':
             simFlight.floatingAltitude = float(arg)
+        elif opt in '-C':
+            simFlight.cutdownAltitude = float(arg)
+        elif opt in '--cutdown':
+            simFlight.cutdown = True
         elif opt in '-o':
             simFlight.outputFile = arg
         elif opt in '-l':
