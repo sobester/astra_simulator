@@ -418,7 +418,7 @@ class flight:
 
         # Check if the output file can be written and create it. If not, stop the preflight.
         try:
-            logger.log("Creating output file {}".format(self.outputFile))
+            logger.debug("Creating output file {}".format(self.outputFile))
             out = open(self.outputFile, 'w')
             out.close()
             os.remove(self.outputFile)
