@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2016-11-17 17:34:50
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-05-15 13:49:50
+# @Last Modified time: 2017-05-22 17:27:56
 from setuptools import setup, find_packages
 import subprocess
 
@@ -22,7 +22,7 @@ setup(
     include_package_data=True,
     scripts=['bin/astra-sim'],
     # package_data={'': ['*.dat']},
-    install_requires=["numpy", "scipy", "grequests"],
+    install_requires=["numpy", "scipy", "grequests", "six"],
     author='Niccolo Zapponi, Paul Chambers',
     author_email='nz1g10@soton.ac.uk, P.R.Chambers@soton.ac.uk',
 )
