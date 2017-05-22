@@ -448,9 +448,13 @@ class flight(object):
 
         # _________________________________________________________________ #
         # PREFLIGHT SEQUENCE
+        self.results = []
+        # ____________________________________________________________ #
+        # Variable initialization
+        self.initMonteCarloParams()
 
         try:
-            self.preflight(self.environment.dateAndTime)
+            self._preflight(self.environment.dateAndTime)
         except:
             logger.exception(
                 "Error during preflight validations and calculations:")
@@ -462,7 +466,7 @@ class flight(object):
         # RUN THE FLIGHT SIMULATION
         for flightNumber in range(self.numberOfSimRuns):
             logger.debug('SIMULATING FLIGHT %d' % (flightNumber + 1))
-            result = self.fly(flightNumber, self.environment.dateAndTime)
+            result = self.fly(flightNumber, self.environment.dateAndTime, runPreflight=False)
             self.results.append(result)
             self.updateProgress(
                 float(flightNumber + 1) / self._totalStepsForProgress, 0)
@@ -474,77 +478,8 @@ class flight(object):
         self.updateProgress(1.0, 0)
         return None
 
-<<<<<<< 0f90db774ee30058484f15364ba2f5f9f4de161b
-        if self.nozzleLift <= self.payloadTrainWeight:
-            raise ValueError('The nozzle lift is too low for the balloon to climb! Adjust the nozzle lift.')
-
-    @profile
-    def preflight(self):
-        """
-        Run a series of pre-flight checks and calculations to verify the
-        consistency of the flight parameters entered and to prepare all the
-        data required for simulation.
-
-        It is MANDATORY to execute this method before the simulation (otherwise
-        the simulation will throw an error)
-
-        If successful, no errors are thrown. Enable debugging for detailed
-        information.
-        """
-        logger.debug('Preflight sequence starting...')
-
-        self._validateFlightParams()
-
-        # Check if the output file can be written and create it. If not, stop
-        # the preflight.
-        try:
-            logger.debug("Creating output file {}".format(self.outputFile))
-            out = open(self.outputFile, 'w')
-            out.close()
-            os.remove(self.outputFile)
-        except IOError:
-            if not os.path.isdir(self.outputFile):
-                logger.exception('The output file cannot be created.\n')
-                raise
-
-        if not self.environment._weatherLoaded:
-            self.environment.maxFlightTime = self.maxFlightTime
-            self.environment.load(self.updateProgress)
-
-        logger.debug('Flight parameters validation succeeded.')
-        logger.debug('Beginning Preflight...')
-
-        # ____________________________________________________________ #
-        # Preflight calculations
-
-        # Balloon performance estimation
-        # According to the balloon weight entered, select the related mean
-        # burst diameter and its Weibull coefficients.
-        self._balloonWeight = \
-            available_balloons_parachutes.balloons[self.balloonModel][0]
-        self._meanBurstDia = (
-            available_balloons_parachutes.meanToNominalBurstRatio *
-            available_balloons_parachutes.balloons[self.balloonModel][1]
-        )
-        self._weibull_lambda = \
-            available_balloons_parachutes.balloons[self.balloonModel][2]
-        self._weibull_k = \
-            available_balloons_parachutes.balloons[self.balloonModel][3]
-
-        logger.debug("""Balloon performance: Mean burst diameter: %.4f,
-            Lambda: %.4f, k: %4f""" % (
-            self._meanBurstDia, self._weibull_lambda, self._weibull_k))
-
-        # ____________________________________________________________ #
-        # Variable initialization
-
-        # Load the flight tools and prep them for simulation
-
-        self.results = []
-=======
     def initMonteCarloParams(self):
         # Monte Carlo params
->>>>>>> Major refactors to increase code modularisation. This should help with upcoming changes for time range target landing site optimization.
         self._lowCD = []
         self._highCD = []
         self._transition = []
@@ -583,7 +518,7 @@ class flight(object):
             self.environment.perturbWind(self.numberOfSimRuns)
 
     @profile
-    def preflight(self, launchDateTime):
+    def _preflight(self, launchDateTime):
         """
         Run a series of pre-flight checks and calculations to verify the
         consistency of the flight parameters entered and to prepare all the
@@ -600,15 +535,6 @@ class flight(object):
         launchDateTime : :obj:`datetime.datetime`
         """
         logger.debug('Preflight sequence starting...')
-
-        # ____________________________________________________________ #
-        # Variable initialization
-
-        # Load the flight tools and prep them for simulation
-
-        self.results = []
-
-        self.initMonteCarloParams()
 
         # _________________________________________________________________ #
         # Lifting gas
@@ -680,7 +606,7 @@ class flight(object):
         logger.debug('Preflight completed!')
 
     @profile
-    def fly(self, flightNumber, launchDateTime):
+    def fly(self, flightNumber, launchDateTime, runPreflight=True):
         """
         Execute a single simulation.
         It should be run N times, where N is the number of simulation runs
@@ -698,6 +624,10 @@ class flight(object):
         launchDateTime : :obj:`datetime.datetime
             The date and time of the launch (note that this may be different
             from the start window of the self.environment object)
+        [runPreflight] : bool, default True
+            Runs the preflight calculations if True. Useful to switch this off
+            if a uniform launchDateTime is used across all flights (as is the
+            case with the Monte Carlo simulation in self.run)
         Returns
         -------
         result : list of numpy array
@@ -705,11 +635,16 @@ class flight(object):
         """
         # Check whether the preflight sequence was performed. If not, stop the
         # simulation.
-        if not self._preflightCompleted:
-            logger.error("""Preflight sequence needs to be performed before the
-                actual flight! Simulation interrupted.""")
-            return
-
+        if runPreflight:
+            try:
+                self._preflight(self.environment.dateAndTime)
+            except:
+                logger.exception(
+                    "Error during preflight validations and calculations:")
+                raise
+        else:
+            assert(self._preflightCompleted),\
+                "'preflight' must be run at least once before attempting a flight"
         # Flight-specific variables initialization
         # Prepare the flight tools to deliver results specific to this flight.
         highCD = self._highCD[flightNumber]
@@ -769,7 +704,7 @@ class flight(object):
             ascentRate = y[1]
 
             if self.cutdown and not self._lastFlightBurst:
-                if altitude > self.cutdownAltitude:
+                if altitude >= self.cutdownAltitude:
                     # Burst the balloon
                     logger.debug('Bursting the balloon at {}m altitude'.format(
                         altitude))

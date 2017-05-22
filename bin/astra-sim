@@ -60,7 +60,8 @@ parser.add_argument('--altitude', type=float, help="Floating Altitude (m)")
 parser.add_argument('--noHD', default=False, action='store_true',
     help="Force non HD weather data")
 parser.add_argument('--debug', action='store_true', help="Use debugging mode")
-
+parser.add_argument('--cutdownAltitude', default=0., type=float,
+    help="The altitude at which to activate cutdown (ignored if --cutdown is not provided)")
 
 def main():
     global debug
@@ -102,6 +103,11 @@ def main():
         assert(args.altitude),\
             'You must provide an altitude (--altitude) when using --floating'
 
+    if args.cutdownAltitude:
+        cutdown = True
+    else:
+        cutdown = False
+
     # flight_args = {'environment': simEnvironment,
     #                'balloonGasType': args.g,
     #                'balloonModel': args.b,
@@ -129,6 +135,8 @@ def main():
                        trainEquivSphereDiam=args.d,                    # m
                        floatingFlight=args.floating,
                        floatingAltitude=args.altitude,                      # m
+                       cutdown=cutdown,
+                       cutdownAltitude=args.cutdownAltitude,
                        excessPressureCoeff=1,
                        outputFile=args.o,
                        debugging=args.debug,
