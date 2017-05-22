@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
-# @Last Modified by:   Paul Chambers
-# @Last Modified time: 2017-05-11 00:19:08
+# @Last Modified by:   p-chambers
+# @Last Modified time: 2017-05-22 14:12:58
 from .simulator import flight
 from .weather import forecastEnvironment
 from datetime import datetime, timedelta
@@ -15,15 +15,29 @@ logger = logging.getLogger(__name__)
 
 
 class targetFlight(flight):
-    """
+    """Class for estimating the required launch parameters (date/time, nozzle
+    lift, floating vs standard, cutdown altitude, etc.) for minimal distance
+    from a target landing site.
 
     Parameters
     ----------
+    start_dateTime : :obj:`datetime.datetime`
+        The date and time of the start of the window for which to test flights
+    targetLat, targetLon : scalar
+        The target landing latitude/longitude
     launchSites : list of lat, lon, elev triplets
         lat, lon and elev triplets for each launch site 
-
+    nozzleLift : scalar
+        The nozzle lift (in kg). This class currently uses a static nozzle
+        lift, and searches time only. Future versions will also search the
+        nozzle lift parameter.
     windowDuration : int
-        number of hours for which to run flights
+        The duration for which to download weather data (in hours). Flights
+        will be sampled within this range.
+
+    See Also
+    --------
+    :obj:`astra.simulator.flight`
     """
 
     def __init__(self,

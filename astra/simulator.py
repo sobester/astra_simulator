@@ -592,6 +592,10 @@ class flight(object):
 
         If successful, no errors are thrown. Enable debugging for detailed
         information.
+
+        Parameters
+        ----------
+        launchDateTime : :obj:`datetime.datetime`
         """
         logger.debug('Preflight sequence starting...')
 
@@ -689,8 +693,6 @@ class flight(object):
         flightNumber : int
             the number of the flight, to be used as the index for getting
             Monte Carlo parameters initialised in preflight
-        storeResult : bool (default True)
-            if True, this function will append to self.results
         launchDateTime : :obj:`datetime.datetime
             The date and time of the launch (note that this may be different
             from the start window of the self.environment object)

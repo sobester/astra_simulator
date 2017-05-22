@@ -39,6 +39,10 @@ def get_urldict_async(urls_dict, hooks_dict=None):
     url_dict : dict of lists
         (key: [url1, url2...]) pairs for logically related urls.
 
+    hooks_dict : dict
+        The post request hook for response processing (see requests lib for
+        examples)
+
     Returns
     -------
     results_dict: dict of list
@@ -286,6 +290,26 @@ class GFS_Handler(object):
 
     def _get_NOAA_REST_url(self, requestVar, requestLongitude, cycle, requestTime):
         """
+        Parameters
+        ----------
+        requestVar : string
+            noaa identifier of the variable name:
+            'tmpprs': Temperature,
+            'hgtprs': 'Altitude',
+            'ugrdprs': 'U Winds',
+            'vgrdprs': 'V Winds'
+        requestLongitude : list of int, length 2
+            The [start, end] window of longitude for which to get data
+            (GFS units)
+        cycle : :obj:`datetime.datetime`
+            The cycle datetime for which to obtain the forecast
+        requestTime : :obj:`datetime.datetime`
+            The launch datetime for which to obtain the forecast
+
+        returns
+        -------
+        requestURL : string
+            The noaa API request url
         """
         requestURL = '%sgfs%d%02d%02d/gfs_%s_%02dz.ascii?%s[%d:%d][%d:%d][%d:%d][%d:%d]' % (
                 self.baseURL,
@@ -317,6 +341,13 @@ class GFS_Handler(object):
             but two are required around the greenwich median)
         cycle : :obj:`datetime.datetime`
             The cycle datetime for which to obtain the forecast
+        requestTime : :obj:`datetime.datetime`
+            The launch datetime for which to obtain the forecast
+        
+        Returns
+        -------
+        dataResults : list
+            list of responses for each request longitude
         """
         dataResults = []
 
@@ -338,7 +369,32 @@ class GFS_Handler(object):
         return dataResults
 
     def _NOAA_request_all(self, cycle, requestTime, progressHandler):
-        """
+        """Requests temperature, altitude and U-V wind direction data from the
+        NOAA GFS system for the ranges specified in the class, and for the
+        input cycle time and requestTime.
+
+        Parameters
+        ----------
+        requestLongitudes : list
+            list of the longitudes for which to make the request (usually one,
+            but two are required around the greenwich median)
+        cycle : :obj:`datetime.datetime`
+            The cycle datetime for which to obtain the forecast
+        requestTime : :obj:`datetime.datetime`
+            The launch datetime for which to obtain the forecast
+        progressHandler : function
+            Function that handles the download progress. This is usually
+            the member function astra.flight.updateProgress.
+
+        Returns
+        -------
+        results : dict
+            ('noaa_name' : response) pairs, where response is the returned
+            data string. Keys:
+            'tmpprs': Temperature,
+            'hgtprs': 'Altitude',
+            'ugrdprs': 'U Winds',
+            'vgrdprs': 'V Winds'
         """
         results = {}
         progressHandler(0, 1)
@@ -375,6 +431,11 @@ class GFS_Handler(object):
             but two are required around the greenwich median)
         cycle : :obj:`datetime.datetime`
             The cycle datetime for which to obtain the forecast
+        requestTime : :obj:`datetime.datetime`
+            The launch datetime for which to obtain the forecast
+        progressHandler : function
+            Function that handles the download progress. This is usually
+            the member function astra.flight.updateProgress.
 
         Returns
         -------
