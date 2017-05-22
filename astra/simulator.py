@@ -137,7 +137,8 @@ class flight(object):
                  floatingAltitude=None,
                  ventingStart=1000,
                  excessPressureCoeff=1.,
-                 flexbileLaunchTime=False,
+                 cutdown=False,
+                 cutdownAltitude=None,
                  outputFile='',
                  debugging=False,
                  log_to_file=False,
@@ -200,7 +201,8 @@ class flight(object):
         self.ventingStart = ventingStart     # m (below the target altitude)
         self.excessPressureCoeff = excessPressureCoeff
         self.maxFlightTime = maxFlightTime
-        self.flexbileLaunchTime = flexbileLaunchTime
+        self.cutdown = cutdown
+        self.cutdownAltitude = cutdownAltitude
 
         # Simulation precision - not user defined!
         self._samplingTime = 3               # seconds
@@ -755,8 +757,6 @@ class flight(object):
         self._currentLonPosition = self.launchSiteLon
         self._currentTime = 0
         self._totalRuns = 0
-
-        print(self.cutdown, self.cutdownAltitude)
 
         def ode(y, t):
             """
