@@ -37,6 +37,177 @@ except AttributeError:
 logger = logging.getLogger(__name__)
 
 
+class flightProfile(object):
+    """
+    Parameters
+    ----------
+    highestAltitude : scalar
+        The highest altitude reached by the flight. This could be the burst
+        altitude, if bursting occurred, or the floating altitude if it didn't
+    """
+    def __init__(self,
+                 launchDateTime,
+                 nozzleLift,
+                 flightNumber,
+                 timeVector,
+                 latitudeProfile,
+                 longitudeProfile,
+                 altitudeProfile,
+                 highestAltIndex,
+                 highestAltitude,
+                 hasBurst):
+        self.launchDateTime = launchDateTime
+        self.nozzleLift = nozzleLift
+        self.flightNumber = flightNumber
+        self.timeVector = timeVector
+        self.latitudeProfile = latitudeProfile
+        self.longitudeProfile = longitudeProfile
+        self.altitudeProfile = altitudeProfile
+        self.highestAltIndex = highestAltIndex
+        self.highestAltitude = highestAltitude
+        self.hasBurst = hasBurst
+
+    def getJsonPath(self):
+        # Every how many points should we store one (this is used to
+        # reduce the size of the json file)
+        shrinkFactor = 5
+
+        # Build up the flight path data
+        jsonPath = ['{ "points" : [\n']
+        jsonPoints = []
+        for pointNumber, eachPoint in enumerate(numpy.transpose([self.latitudeProfile, self.longitudeProfile, self.altitudeProfile])):
+            if pointNumber % shrinkFactor == 0:
+                jsonPoints.append('{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f }\n' % (
+                    numpy.clip(eachPoint[0], -85.0511, 85.0511), eachPoint[1], eachPoint[2]))
+
+        jsonPath.append(','.join(jsonPoints))
+        jsonPath.append('\n] }')
+
+        return jsonPath
+
+    def getKMLPath(self):
+        """
+        """
+        kmlPath = []
+        flightHrs, flightMins, flightSecs = tools.prettySeconds(self.timeVector[-1])
+        thisFlightHasBurst = self.hasBurst
+
+        kmlPath = [
+            '<Placemark>\n<name>Simulation %d</name>\n<styleUrl>#stratoLine</styleUrl>\n<LineString>\n<coordinates>\n' % (
+                self.flightNumber)]
+
+        pointNumber = 0
+        for eachPoint in numpy.transpose([self.latitudeProfile, self.longitudeProfile, self.altitudeProfile]):
+            if thisFlightHasBurst:
+                if pointNumber % 10 == 0:
+                    kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
+            else:
+                kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
+            pointNumber += 1
+
+        kmlPath.append(
+            '</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</LineString>\n</Placemark>\n')
+
+        return kmlPaths
+
+    # def getCSVMarkers(self):
+
+    def getKMLMarkers(self):
+        """
+        """
+        kmlMarkers = []
+        # Add balloon launch point
+        kmlMarkers.append(
+            '<Placemark>\n<name>Balloon Launch</name>\n<styleUrl>#launchPin</styleUrl>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
+                self.longitudeProfile[0], self.latitudeProfile[0],
+                self.altitudeProfile[0]))
+
+        if self.hasBurst:
+            # Add balloon burst point
+            kmlMarkers.append(
+                '<Placemark>\n<name>Balloon burst (Simulation %d)</name>\n<styleUrl>#burstPin</styleUrl>\n<description>Burst altitude: %.0f m.' % (
+                    self.flightNumber, self.highestAltitude))
+            kmlMarkers.append(
+                '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
+                    self.longitudeProfile[self.highestAltIndex],
+                    self.latitudeProfile[self.highestAltIndex],
+                    self.highestAltitude))
+
+            # Add balloon landing point
+            kmlMarkers.append(
+                '<Placemark>\n<name>Payload landing (Simulation %d)</name>\n<styleUrl>#landingPin</styleUrl>\n<description>Flight time: %d hours, %d minutes and %d seconds.' % (
+                    self.flightNumber, flightHrs, flightMins, flightSecs))
+            kmlMarkers.append(
+                '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
+                    self.longitudeProfile[-1], self.latitudeProfile[-1],
+                    self.altitudeProfile[-1]))
+        else:
+            # Add target altitude reached point
+            kmlMarkers.append(
+                '<Placemark>\n<name>Target altitude reached (Simulation %d)</name>\n<styleUrl>#burstPin</styleUrl>\n<description>Target altitude: %.0f m.' % (
+                    self.flightNumber, self.highestAltitude))
+            kmlMarkers.append(
+                '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
+                    self.longitudeProfile[self.highestAltIndex],
+                    self.latitudeProfile[self.highestAltIndex], self.highestAlt))
+        return kmlMarkers
+
+
+    def getJsonMarkers(self):
+        jsonFloatMarkers = []
+        jsonBurstMarkers = []
+        jsonLandingMarkers = []
+        if self.hasBurst:
+            # BALLOON HAS BURST DURING THIS SIMULATION
+            # Build up the landing markers data
+            flightHrs, flightMins, flightSecs = tools.prettySeconds(self.timeVector[-1])
+            landTime = self.launchDateTime + timedelta(seconds=float(self.timeVector[-1]))
+            jsonLandingMarkers.append(
+                '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Payload Landing Site", "simNumber" : "%d", "otherData" : "Flight time: %d hours, %d mins and %d secs <br /> ETA: %s" }\n' % (
+                    self.latitudeProfile[-1], self.longitudeProfile[-1],
+                    self.altitudeProfile[-1], self.flightNumber, flightHrs, flightMins,
+                    flightSecs, landTime.strftime("%d/%m/%Y %H:%M:%S")))
+
+            # Build up the burst markers data
+            jsonBurstMarkers.append(
+                '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Balloon Burst", "simNumber" : "%d", "otherData" : "Burst altitude: %.0f m"  }\n' % (
+                    self.latitudeProfile[self.highestAltIndex],
+                    self.longitudeProfile[self.highestAltIndex],
+                    self.highestAltitude,
+                    self.flightNumber,
+                    self.highestAltitude))
+        else:
+            # BALLOON HASN'T BURST DURING THIS SIMULATION
+
+            # Build up the float markers data
+            if self.highestAltIndex == -1:
+                # This is the case when the target altitude was not reached. Show an error to the user.
+                jsonFloatMarkers.append(
+                    '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Target Altitude NOT Reached", "simNumber" : "%d", "otherData" : "Max altitude: %.0f m <br />Try to increase the flight duration." }\n' % (
+                        self.latitudeProfile[self.highestAltIndex],
+                        self.longitudeProfile[self.highestAltIndex],
+                        self.highestAltitude,
+                        self.flightNumber,
+                        self.highestAltitude))
+            else:
+                jsonFloatMarkers.append(
+                    '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Target Altitude Reached", "simNumber" : "%d", "otherData" : "Target altitude: %.0f m" }\n' % (
+                        self.latitudeProfile[highestAltIndex],
+                        self.longitudeProfile[highestAltIndex],
+                        self.highestAltitude,
+                        self.flightNumber,
+                        self.highestAltitude))
+        # Put all the non-empty lists above together
+        if len(jsonBurstMarkers) != 0:
+            jsonBurstMarkers = ['"burstMarkers" : [\n', ','.join(jsonBurstMarkers), '],']
+
+        if len(jsonLandingMarkers) != 0:
+            jsonLandingMarkers = ['"landingMarkers" : [\n', ','.join(jsonLandingMarkers), '],']
+
+        if len(jsonFloatMarkers) != 0:
+            jsonFloatMarkers = ['"floatMarkers" : [\n', ','.join(jsonFloatMarkers), '],']
+        return jsonBurstMarkers, jsonFloatMarkers, jsonLandingMarkers
+
 class flight(object):
     """Primary Balloon flight simulation class.
 
@@ -359,6 +530,7 @@ class flight(object):
         if new_numberOfSimRuns <= 0:
             logger.error('Number of sim runs cannot be negative or zero.')
             raise ValueError('Number of sim runs cannot be negative or zero.')
+        self.initMonteCarloParams(new_numberOfSimRuns)
         self._numberOfSimRuns = new_numberOfSimRuns
 
     @property
@@ -451,7 +623,6 @@ class flight(object):
         self.results = []
         # ____________________________________________________________ #
         # Variable initialization
-        self.initMonteCarloParams()
 
         try:
             self._preflight(self.environment.dateAndTime)
@@ -466,7 +637,7 @@ class flight(object):
         # RUN THE FLIGHT SIMULATION
         for flightNumber in range(self.numberOfSimRuns):
             logger.debug('SIMULATING FLIGHT %d' % (flightNumber + 1))
-            result = self.fly(flightNumber, self.environment.dateAndTime, runPreflight=False)
+            result, _ = self.fly(flightNumber, self.environment.dateAndTime, runPreflight=False)
             self.results.append(result)
             self.updateProgress(
                 float(flightNumber + 1) / self._totalStepsForProgress, 0)
@@ -478,7 +649,7 @@ class flight(object):
         self.updateProgress(1.0, 0)
         return None
 
-    def initMonteCarloParams(self):
+    def initMonteCarloParams(self, numberOfSimRuns):
         # Monte Carlo params
         self._lowCD = []
         self._highCD = []
@@ -489,7 +660,7 @@ class flight(object):
         self._balloonReturnFraction = []
 
         # Initialize variables subject to perturbation (Monte Carlo simulation)
-        if self.numberOfSimRuns == 1:
+        if numberOfSimRuns == 1:
             # Deterministic simulation: use standard values, no perturbations
             self._lowCD.append(0.225)
             self._highCD.append(0.425)
@@ -500,7 +671,7 @@ class flight(object):
             self._balloonReturnFraction.append(0.03)
         else:
             # Monte Carlo simulation: perturb values
-            for _ in range(self.numberOfSimRuns):
+            for _ in range(numberOfSimRuns):
                 mcIndex = numpy.random.random_integers(0, (
                     numpy.size(drag_helium.transitions[:, 0])) - 1)
                 self._lowCD.append(drag_helium.transitions[mcIndex, 0])
@@ -515,7 +686,7 @@ class flight(object):
                     self._weibull_lambda *
                     numpy.random.weibull(self._weibull_k))
                 # Perturb the wind for Monte Carlo.
-            self.environment.perturbWind(self.numberOfSimRuns)
+            self.environment.perturbWind(numberOfSimRuns)
 
     @profile
     def _preflight(self, launchDateTime):
@@ -907,7 +1078,7 @@ class flight(object):
 
         # Extract altitude and ascent rate data from the solution array
         solution_altitude = numpy.array(solution[:, 0])
-        #solution_ascrate = numpy.array(solution[:,1]) ### Currently not used.
+        # solution_ascrate = numpy.array(solution[:,1]) ### Currently not used.
 
         # Trim negative altitude values from results and then trim time to the
         # same length.
@@ -987,116 +1158,44 @@ class flight(object):
 
         # STORE RESULTS OF CURRENT SIMULATION
         if self._lastFlightBurst:
-            # The results are:   flight number  time vector latitude profile
-            #   longitude profile   altitude    burst index   burst altitude
-            #   has burst
-            result = [flightNumber + 1, timeVector, latitudeProfile,
-                      longitudeProfile, solution_altitude, index,
-                      self._lastFlightBurstAlt, True]
+            highestAltitude = self._lastFlightBurstAlt
         else:
-            # The results are:   flight number  time vector latitude profile
-            #   longitude profile   altitude   burst index  target altitude
-            #   has burst
-            result = [flightNumber + 1, timeVector, latitudeProfile,
-                      longitudeProfile, solution_altitude, index,
-                      self.floatingAltitude, False]
+            highestAltitude = self.floatingAltitude
+
+
+        resultProfile = flightProfile(launchDateTime, self.nozzleLift, flightNumber + 1, timeVector, latitudeProfile,
+                  longitudeProfile, solution_altitude, index,
+                  highestAltitude, self._lastFlightBurst)
 
         logger.debug('Simulation completed.')
 
-        result_dict = {'launchDateTime': launchDateTime,
-            'result': result}   
-
-        return result_dict
+        return resultProfile, solution
 
     def write_JSON(self, filename):
         """
         """
         # GENERATE JSON FILE OUT OF RESULTS
 
-        # Every how many points should we store one (this is used to
-        # reduce the size of the json file)
-        shrinkFactor = 5
-
-
         # Initialize the data lists
-        jsonBurstMarkers = []
-        jsonLandingMarkers = []
-        jsonFloatMarkers = []
+        jsonMarkers = []
         jsonPaths = []
 
         # Go through the results of each flight simulation
-        for flightResult_dict in self.results:
-            flightResult = flightResult_dict['result']
-            thisFlightHasBurst = flightResult[7]
+        for profile in self.results:
+            thisFlightHasBurst = profile.hasBurst
 
-            # Build up the flight path data
-            jsonPath = ['{ "points" : [\n']
-            jsonPoints = []
-            pointNumber = 0
-            for eachPoint in numpy.transpose(flightResult[2:5]):
-                if pointNumber % shrinkFactor == 0:
-                    jsonPoints.append('{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f }\n' % (
-                        numpy.clip(eachPoint[0], -85.0511, 85.0511), eachPoint[1], eachPoint[2]))
-                pointNumber += 1
-
-            jsonPath.append(','.join(jsonPoints))
-            jsonPath.append('\n] }')
+            jsonPath = profile.getJsonPath()
             jsonPaths.append(''.join(jsonPath))
 
-            if thisFlightHasBurst:
-                # BALLOON HAS BURST DURING THIS SIMULATION
-                # Build up the landing markers data
-                flightHrs, flightMins, flightSecs = tools.prettySeconds(flightResult[1][-1])
-                landTime = flightResult_dict['launchDateTime'] + timedelta(seconds=float(flightResult[1][-1]))
-                jsonLandingMarkers.append(
-                    '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Payload Landing Site", "simNumber" : "%d", "otherData" : "Flight time: %d hours, %d mins and %d secs <br /> ETA: %s" }\n' % (
-                        numpy.transpose(flightResult[2:5])[-1][0], numpy.transpose(flightResult[2:5])[-1][1],
-                        numpy.transpose(flightResult[2:5])[-1][1], flightResult[0], flightHrs, flightMins,
-                        flightSecs, landTime.strftime("%d/%m/%Y %H:%M:%S")))
-
-                # Build up the burst markers data
-                jsonBurstMarkers.append(
-                    '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Balloon Burst", "simNumber" : "%d", "otherData" : "Burst altitude: %.0f m"  }\n' % (
-                        numpy.transpose(flightResult[2:5])[flightResult[5]][0],
-                        numpy.transpose(flightResult[2:5])[flightResult[5]][1], flightResult[6],
-                        flightResult[0],
-                        flightResult[6]))
-            else:
-                # BALLOON HASN'T BURST DURING THIS SIMULATION
-
-                # Build up the float markers data
-                if flightResult[5] == -1:
-                    # This is the case when the target altitude was not reached. Show an error to the user.
-                    jsonFloatMarkers.append(
-                        '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Target Altitude NOT Reached", "simNumber" : "%d", "otherData" : "Max altitude: %.0f m <br />Try to increase the flight duration." }\n' % (
-                            numpy.transpose(flightResult[2:5])[flightResult[5]][0],
-                            numpy.transpose(flightResult[2:5])[flightResult[5]][1], flightResult[6],
-                            flightResult[0], numpy.transpose(flightResult[2:5])[flightResult[5]][2]))
-                else:
-                    jsonFloatMarkers.append(
-                        '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Target Altitude Reached", "simNumber" : "%d", "otherData" : "Target altitude: %.0f m" }\n' % (
-                            numpy.transpose(flightResult[2:5])[flightResult[5]][0],
-                            numpy.transpose(flightResult[2:5])[flightResult[5]][1], flightResult[6],
-                            flightResult[0], flightResult[6]))
-
-        # Put all the non-empty lists above together
-        if len(jsonBurstMarkers) != 0:
-            jsonBurstMarkers = ['"burstMarkers" : [\n', ','.join(jsonBurstMarkers), '],']
-
-        if len(jsonLandingMarkers) != 0:
-            jsonLandingMarkers = ['"landingMarkers" : [\n', ','.join(jsonLandingMarkers), '],']
-
-        if len(jsonFloatMarkers) != 0:
-            jsonFloatMarkers = ['"floatMarkers" : [\n', ','.join(jsonFloatMarkers), '],']
+            jsonMarkers.append(''.join(profile.getJsonMarkers()))
+            
 
         jsonPaths = ['"flightPaths" : [\n', ','.join(jsonPaths), ']']
 
         # Put them all together in one single array
         jsonToAdd = [
             '{',
-            ''.join(jsonBurstMarkers),
-            ''.join(jsonFloatMarkers),
-            ''.join(jsonLandingMarkers),
+            ''.join(jsonMarkers),
             ''.join(jsonPaths),
             '}'
         ]
@@ -1127,61 +1226,10 @@ class flight(object):
         kmlPaths = []
         kmlMarkers = []
 
-        for flightResult in (r['result'] for r in self.results):
-            flightHrs, flightMins, flightSecs = tools.prettySeconds(flightResult[1][-1])
-            thisFlightHasBurst = flightResult[7]
+        for profile in self.results:
+            kmlPaths.append(''.join(profile.getKMLPath()))
+            kmlMarkers.append(''.join(profile.getKMLMarkers()))
 
-            kmlPath = [
-                '<Placemark>\n<name>Simulation %d</name>\n<styleUrl>#stratoLine</styleUrl>\n<LineString>\n<coordinates>\n' % (
-                    flightResult[0])]
-
-            pointNumber = 0
-            for eachPoint in numpy.transpose(flightResult[2:5]):
-                if thisFlightHasBurst:
-                    if pointNumber % 10 == 0:
-                        kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
-                else:
-                    kmlPath.append('%.5f,%.5f,%.5f\n' % (eachPoint[1], eachPoint[0], eachPoint[2]))
-                pointNumber += 1
-
-            kmlPath.append(
-                '</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</LineString>\n</Placemark>\n')
-
-            kmlPaths.append(''.join(kmlPath))
-
-            # Add balloon launch point
-            kmlMarkers.append(
-                '<Placemark>\n<name>Balloon Launch</name>\n<styleUrl>#launchPin</styleUrl>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
-                    numpy.transpose(flightResult[2:5])[0][1], numpy.transpose(flightResult[2:5])[0][0],
-                    numpy.transpose(flightResult[2:5])[0][2]))
-
-            if thisFlightHasBurst:
-                # Add balloon burst point
-                kmlMarkers.append(
-                    '<Placemark>\n<name>Balloon burst (Simulation %d)</name>\n<styleUrl>#burstPin</styleUrl>\n<description>Burst altitude: %.0f m.' % (
-                        flightResult[0], flightResult[6]))
-                kmlMarkers.append(
-                    '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
-                        numpy.transpose(flightResult[2:5])[flightResult[5]][1],
-                        numpy.transpose(flightResult[2:5])[flightResult[5]][0], flightResult[6]))
-
-                # Add balloon landing point
-                kmlMarkers.append(
-                    '<Placemark>\n<name>Payload landing (Simulation %d)</name>\n<styleUrl>#landingPin</styleUrl>\n<description>Flight time: %d hours, %d minutes and %d seconds.' % (
-                        flightResult[0], flightHrs, flightMins, flightSecs))
-                kmlMarkers.append(
-                    '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
-                        numpy.transpose(flightResult[2:5])[-1][1], numpy.transpose(flightResult[2:5])[-1][0],
-                        numpy.transpose(flightResult[2:5])[-1][2]))
-            else:
-                # Add target altitude reached point
-                kmlMarkers.append(
-                    '<Placemark>\n<name>Target altitude reached (Simulation %d)</name>\n<styleUrl>#burstPin</styleUrl>\n<description>Target altitude: %.0f m.' % (
-                        flightResult[0], flightResult[6]))
-                kmlMarkers.append(
-                    '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
-                        numpy.transpose(flightResult[2:5])[flightResult[5]][1],
-                        numpy.transpose(flightResult[2:5])[flightResult[5]][0], flightResult[6]))
 
         kmlToAdd = [
             '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">\n<Document>\n<name>Flight Simulations</name>\n<atom:author>\n<atom:name>%s</atom:name>\n</atom:author>\n' % kmlAuthor,
@@ -1240,8 +1288,8 @@ class flight(object):
         """
         # Calculate how many rows we need in total
         totalRows = 0
-        for flightResult in (r['result'] for r in self.results):
-            totalRows += len(flightResult[1])
+        for profile in self.results:
+            totalRows += len(profile.timeVector)
 
         # Columns are Flight #, Time from launch, Lat, Lon, Alt, Remarks
         totalColumns = 6
@@ -1254,28 +1302,29 @@ class flight(object):
 
         currentPosition = 2
         # Populate matrix with data
-        for flightResult in (r['result'] for r in self.results):
-            numberOfPoints = len(flightResult[1])
-            thisFlightHasBurst = flightResult[7]
+        for profile in self.results:
+            numberOfPoints = len(profile.latitudeProfile)
+            thisFlightHasBurst = profile.hasBurst
 
             # Flight number, Time, Lat, Lon, Alt
             for i in range(5):
-                csvMatrix[currentPosition:currentPosition + numberOfPoints, i] =\
-                 flightResult[i]
+                csvMatrix[currentPosition:currentPosition + numberOfPoints, :] = \
+                [proifle.flightNumber, profile.timeVector, profile.latitudeProfile,
+                profile.longitudeProfile, profile.altitudeProfile]
 
             # Remarks: Launch
             csvMatrix[currentPosition, 5] = 'Balloon Launch'
 
             if thisFlightHasBurst:
                 # Remarks: Burst
-                csvMatrix[currentPosition + flightResult[5], 5] = 'Balloon Burst'
+                csvMatrix[currentPosition + profile.highestAltIndex, 5] = 'Balloon Burst'
 
                 # Remarks: Landing
                 csvMatrix[currentPosition + numberOfPoints - 1, 5] =\
                     'Balloon Landed'
             else:
                 # Remarks: Target Altitude Reached
-                csvMatrix[currentPosition + flightResult[5], 5] =\
+                csvMatrix[currentPosition + self.highestAltIndex, 5] =\
                     'Balloon has reached target altitude'
 
             currentPosition += numberOfPoints
