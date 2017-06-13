@@ -4,7 +4,7 @@
 These tools generally perform basic unit conversions, provide simple data and
 analyze lists.
 """
-from math import sqrt, exp, sin, cos, radians, atan, atan2, tan, pi
+from math import sqrt, exp, sin, cos, radians, atan, atan2, tan, pi, asin, sqrt
 import numpy
 import logging
 from six.moves.urllib.request import urlopen
@@ -13,6 +13,22 @@ import json
 
 
 logger = logging.getLogger(__name__)
+
+
+def haversine(lat1, lon1, lat2, lon2):
+    """Helper function for estimating ground distance between two lat lon
+    points on the Earth's surface
+    """
+    R = 6371.0    # Earth radius in kilometers (assume spherical)
+
+    dLat = radians(lat2 - lat1)
+    dLon = radians(lon2 - lon1)
+    lat1 = radians(lat1)
+    lat2 = radians(lat2)
+
+    a = sin(dLat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dLon / 2) ** 2
+    c = 2 * asin(sqrt(a))
+    return R * c
 
 
 def feet2m(lengthFeet):

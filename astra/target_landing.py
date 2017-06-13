@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
-# @Last Modified by:   Paul Chambers
-# @Last Modified time: 2017-06-13 14:27:12
+# @Last Modified by:   p-chambers
+# @Last Modified time: 2017-06-13 18:20:14
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from datetime import datetime, timedelta
@@ -16,6 +16,9 @@ from bisect import bisect_right
 from copy import deepcopy
 from operator import eq
 import functools
+from . import global_tools as tools
+import matplotlib.dates as mdates
+
 
 logger = logging.getLogger(__name__)
 
@@ -262,14 +265,15 @@ class targetFlight(flight):
         distance : scalar
             The euclidean norm of [target_lon - lon, target_lat - lat] (degrees)
         """
-        t = int(X[0])
+        t = X[0]
+        print(t)
         launchDateTime = self.start_dateTime + timedelta(hours=t)
         resultProfile, solution = self.fly(0, launchDateTime)
         resultProfile.X = X
 
         landing_lat = resultProfile.latitudeProfile[-1]
         landing_lon = resultProfile.longitudeProfile[-1]
-        dist = np.linalg.norm(np.array([self.targetLat, self.targetLon]) - np.array([landing_lat, landing_lon]))
+        dist = tools.haversine(landing_lat, landing_lon, self.targetLat, self.targetLon)
         resultProfile.distanceFromTarget = dist
         # Store normalised objective (negative) as this is a minimization. Used
         # in the hall of fame production and sorting.
@@ -286,12 +290,12 @@ class targetFlight(flight):
 
         Currently only considers time
         """
-        dts = np.arange(self.windowDuration)
+        dts = list(range(self.windowDuration))
 
         # ensure the hall of fame remembers all individuals profiles
         self.results = HallOfFame(maxsize=len(dts))
 
-        dateTimeVec = self.start_dateTime + dts * timedelta(hours=1)
+        dateTimeVec = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
 
         for i, launchSiteForecast in enumerate(self.launchSiteForecasts):
             self.environment = launchSiteForecast
@@ -307,7 +311,7 @@ class targetFlight(flight):
         self.bestProfile = bestProfile
         return bestProfile
 
-    def optimizeTargetLandingSite(self, method='Nelder-Mead', **kwargs):
+    def optimizeTargetLandingSite(self, method='Nelder-Mead', maxsize=10, **kwargs):
         """
         Parameters
         ----------
@@ -317,6 +321,10 @@ class targetFlight(flight):
             'Nelder-Mead' : Use scipy's Nelder mead pattern search. This has
                 proven to be sensitive to initial guesses for this application.
             'DE' : Use scipy differential evolution.
+
+        [maxsize] : int (default 10)
+            The number of (lexographically sorted by distance from target site)
+            profiles to keep in self.results
 
         **kwargs - extra args to pass to scipy
         """
@@ -331,7 +339,7 @@ class targetFlight(flight):
         # nozzleLiftLowerBound = 
         # nozzleLiftUpperBound = 
         # nozzelLift_Vector = []
-        self.results = []
+        self.results = HallOfFame(maxsize=10)
 
         # distance_map = {}
 
@@ -341,16 +349,22 @@ class targetFlight(flight):
             except KeyError:
                 logger.info('No Initial guess x0 provided. Using half of the windowDuration.')
                 x0 = 0.5 * self.windowDuration
-            res = scipy.optimize.minimize(self.targetDistance, x0=x0,
+            res = opt.minimize(self.targetDistance, x0=x0,
                                           method='Nelder-Mead',
                                           **kwargs)
-            best_x = self.start_dateTime + timedelta(hours=res.x[0])
-
+            bestProfile = self.results[0]
+            self.bestProfile = bestProfile
         elif method == 'DE':
-            raise NotImplementedError('{} method not yet implemented'.format(method))
+            res = opt.differential_evolution(self.targetDistance, 
+                bounds=[(0, self.windowDuration - self.maxFlightTime/3600.)])
+            bestProfile = self.results[0]
+            self.bestProfile = bestProfile
+        # elif method == 'L-BFGS-B':
+            # 
 
         else:
             raise ValueError('No known optimization method for {}'.format(method))
+        return res
 
     # def plotBruteForceComparison(self):
     #     """
@@ -366,7 +380,7 @@ class targetFlight(flight):
     #     raise NotImplementedError()
 
 
-    def plotPaths3D(self):
+    def plotPaths3D(self, fig=None, ax=None):
         """Plots the resulting trajectories contained in self.results, along
         with target 
 
@@ -374,8 +388,11 @@ class targetFlight(flight):
         any method in optimizeTargetLandingSite, since these will populate
         self.results
         """
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
+        if not fig:
+            fig = plt.figure()
+        if not ax:
+            ax = fig.add_subplot(111, projection='3d')
+
         plt.axis('equal')
 
         for profile in self.results:
@@ -389,26 +406,70 @@ class targetFlight(flight):
         ax.set_xlabel('Lat (deg)')
         ax.set_ylabel('Lon (deg)')
         ax.set_zlabel('Alt (km)')
+        fig.show()
         return fig, ax
 
-    def plotLandingSites(self):
+    def plotLandingSites(self, fig=None, ax=None, landingMarker='bx'):
         """
         """
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
+        if not fig:
+            fig = plt.figure()
+        if not ax:
+            ax = fig.add_subplot(111, aspect='equal')
+            ax.set_xlabel('Lat (deg)')
+            ax.set_ylabel('Lon (deg)')
 
-        plt.axis('equal')
 
-        for profile in self.results:
-            lat_arr, lon_arr, alt_arr = profile.latitudeProfile, profile.longitudeProfile, profile.altitudeProfile
-            ax.plot(lat_arr[-1], lon_arr[-1], 'bx')
+        lats = [prof.latitudeProfile[-1] for prof in self.results]
+        lons = [prof.longitudeProfile[-1] for prof in self.results]
+
+        ax.plot(lats, lons, landingMarker, label='Trajectory simulations')
             
         best_lat, best_lon, best_alt = self.bestProfile.latitudeProfile, self.bestProfile.longitudeProfile,self.bestProfile.altitudeProfile
-        ax.plot(self.targetLat, self.targetLon, 'gx', label='Target')
-        ax.plot(self.launchSites[0][0], self.launchSites[0][1], 'rx', label='Launch Site')
+        m = ax.plot(self.targetLat, self.targetLon, 'gx', label='Target')
+        ax.plot(self.launchSites[0][0], self.launchSites[0][1], 'go', label='Launch Site')
         ax.plot(best_lat[-1], best_lon[-1], 'kx', label='Best')
             
-        ax.legend(loc='lower left')
-        ax.set_xlabel('Lat (deg)')
-        ax.set_ylabel('Lon (deg)')
+        legend = ax.legend(loc='lower left')
+
+        fig.show()
+        return fig, ax
+
+    def plotLandingSiteDistances(self, fig=None, ax=None, marker='bx', bestMarker='b*'):
+        """Plots the ground distance of the landing sites contained in
+        self.results from the target landing site.
+
+        Requires a call to any of the optimisation of brute force calculations
+        to populate self.results.
+        """
+        if not fig:
+            fig = plt.figure()
+        if not ax:
+            ax = fig.add_subplot(111)
+            ax.set_xlabel('Date and Time')
+            ax.set_ylabel(r'Ground Distance (km)')
+            xtick_locator = mdates.AutoDateLocator()
+            xtick_formatter = mdates.AutoDateFormatter(xtick_locator)
+            ax.xaxis.set_major_locator(xtick_locator)
+            ax.xaxis.set_major_formatter(xtick_formatter)
+            # ax.xaxis.set_minor_locator(hours)
+            date_start = self.start_dateTime
+            date_end = (self.start_dateTime + timedelta(hours=self.windowDuration))
+            ax.set_xlim(date_start, date_end)
+            fig.autofmt_xdate()
+
+        dateTimes = []
+        distances = []
+        for prof in self.results:
+            dateTime = prof.launchDateTime
+            dateTimes.append(dateTime)
+            distance = prof.distanceFromTarget
+            distances.append(distance)
+            
+        ax.plot(dateTimes, distances, marker, label='Trajectory simulations')
+        ax.plot(self.bestProfile.launchDateTime, self.bestProfile.distanceFromTarget, bestMarker, markersize=8, label='Brute Force min')
+
+        fig.show()
+
+        legend = ax.legend(loc='lower right')
         return fig, ax
