@@ -108,7 +108,7 @@ class flightProfile(object):
         kmlPath.append(
             '</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</LineString>\n</Placemark>\n')
 
-        return kmlPaths
+        return kmlPath
 
     # def getCSVMarkers(self):
 
@@ -124,6 +124,8 @@ class flightProfile(object):
 
         if self.hasBurst:
             # Add balloon burst point
+            flightHrs, flightMins, flightSecs = tools.prettySeconds(self.timeVector[-1])
+
             kmlMarkers.append(
                 '<Placemark>\n<name>Balloon burst (Simulation %d)</name>\n<styleUrl>#burstPin</styleUrl>\n<description>Burst altitude: %.0f m.' % (
                     self.flightNumber, self.highestAltitude))
@@ -197,15 +199,7 @@ class flightProfile(object):
                         self.highestAltitude,
                         self.flightNumber,
                         self.highestAltitude))
-        # Put all the non-empty lists above together
-        if len(jsonBurstMarkers) != 0:
-            jsonBurstMarkers = ['"burstMarkers" : [\n', ','.join(jsonBurstMarkers), '],']
 
-        if len(jsonLandingMarkers) != 0:
-            jsonLandingMarkers = ['"landingMarkers" : [\n', ','.join(jsonLandingMarkers), '],']
-
-        if len(jsonFloatMarkers) != 0:
-            jsonFloatMarkers = ['"floatMarkers" : [\n', ','.join(jsonFloatMarkers), '],']
         return jsonBurstMarkers, jsonFloatMarkers, jsonLandingMarkers
 
 class flight(object):
@@ -1163,7 +1157,8 @@ class flight(object):
             highestAltitude = self.floatingAltitude
 
 
-        resultProfile = flightProfile(launchDateTime, self.nozzleLift, flightNumber + 1, timeVector, latitudeProfile,
+        resultProfile = flightProfile(launchDateTime, self.nozzleLift,
+            flightNumber + 1, timeVector, latitudeProfile,
                   longitudeProfile, solution_altitude, index,
                   highestAltitude, self._lastFlightBurst)
 
@@ -1177,7 +1172,9 @@ class flight(object):
         # GENERATE JSON FILE OUT OF RESULTS
 
         # Initialize the data lists
-        jsonMarkers = []
+        jsonBurstMarkers = []
+        jsonLandingMarkers = []
+        jsonFloatMarkers = []
         jsonPaths = []
 
         # Go through the results of each flight simulation
@@ -1187,15 +1184,30 @@ class flight(object):
             jsonPath = profile.getJsonPath()
             jsonPaths.append(''.join(jsonPath))
 
-            jsonMarkers.append(''.join(profile.getJsonMarkers()))
-            
+            burstMarkers, floatMarkers, landingMarkers = profile.getJsonMarkers()
+            jsonBurstMarkers.extend(burstMarkers)
+            jsonLandingMarkers.extend(burstMarkers)
+            jsonFloatMarkers.extend(burstMarkers)
+
 
         jsonPaths = ['"flightPaths" : [\n', ','.join(jsonPaths), ']']
+
+        # Put all the non-empty lists above together
+        if len(jsonBurstMarkers) != 0:
+            jsonBurstMarkers = ['"burstMarkers" : [\n', ','.join(jsonBurstMarkers), '],']
+
+        if len(jsonLandingMarkers) != 0:
+            jsonLandingMarkers = ['"landingMarkers" : [\n', ','.join(jsonLandingMarkers), '],']
+
+        if len(jsonFloatMarkers) != 0:
+            jsonFloatMarkers = ['"floatMarkers" : [\n', ','.join(jsonFloatMarkers), '],']
 
         # Put them all together in one single array
         jsonToAdd = [
             '{',
-            ''.join(jsonMarkers),
+            ''.join(jsonBurstMarkers),
+            ''.join(jsonLandingMarkers),
+            ''.join(jsonFloatMarkers),
             ''.join(jsonPaths),
             '}'
         ]
@@ -1295,10 +1307,9 @@ class flight(object):
         totalColumns = 6
 
         # Add one column for the header and generate an empty matrix
-        csvMatrix = numpy.zeros((totalRows + 2) * totalColumns).reshape(
-            totalRows + 2, totalColumns).astype('|S100')
+        csvMatrix = numpy.zeros((totalRows + 2, totalColumns), dtype='|S100')
         # Clear the remarks column (it was full of zeros)
-        csvMatrix[..., 5] = ''
+        # csvMatrix[:, 5] = ''
 
         currentPosition = 2
         # Populate matrix with data
@@ -1307,10 +1318,11 @@ class flight(object):
             thisFlightHasBurst = profile.hasBurst
 
             # Flight number, Time, Lat, Lon, Alt
-            for i in range(5):
-                csvMatrix[currentPosition:currentPosition + numberOfPoints, :] = \
-                [proifle.flightNumber, profile.timeVector, profile.latitudeProfile,
-                profile.longitudeProfile, profile.altitudeProfile]
+            # for i in range(5):
+            csvMatrix[currentPosition:currentPosition + numberOfPoints, :5] = \
+            numpy.column_stack([numpy.ones(numberOfPoints)*profile.flightNumber, profile.timeVector,
+            profile.latitudeProfile, profile.longitudeProfile,
+            profile.altitudeProfile])
 
             # Remarks: Launch
             csvMatrix[currentPosition, 5] = 'Balloon Launch'

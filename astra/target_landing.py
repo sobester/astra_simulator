@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
-# @Last Modified by:   p-chambers
-# @Last Modified time: 2017-05-26 15:57:13
-from .simulator import flight
+# @Last Modified by:   Paul Chambers
+# @Last Modified time: 2017-06-13 14:27:12
+from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from datetime import datetime, timedelta
 import logging
@@ -12,16 +12,113 @@ import numpy as np
 import scipy.optimize as opt
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-
-
+from bisect import bisect_right
+from copy import deepcopy
+from operator import eq
+import functools
 
 logger = logging.getLogger(__name__)
 
-class flightProfile(object):
-    def __init__(self, X, result_path, distance):
-        self.X = X
-        self.result_path = result_path
-        self.distance = distance
+
+class HallOfFame(object):
+    """Class copied and edited from the deap python library.
+
+    The hall of fame contains the best individual that ever lived in the
+    population during the evolution. It is lexicographically sorted at all
+    time so that the first element of the hall of fame is the individual that
+    has the best first distanceFromTarget value ever seen, according to the weights
+    provided to the distanceFromTarget at creation time.
+    
+    The insertion is made so that old individuals have priority on new
+    individuals. A single copy of each individual is kept at all time, the
+    equivalence between two individuals is made by the operator passed to the
+    *similar* argument.
+    :param maxsize: The maximum number of individual to keep in the hall of
+                    fame.
+    :param similar: An equivalence operator between two individuals, optional.
+                    It defaults to operator :func:`operator.eq`.
+    
+    The class :class:`HallOfFame` provides an interface similar to a list
+    (without being one completely). It is possible to retrieve its length, to
+    iterate on it forward and backward and to get an item or a slice from it.
+    """
+    def __init__(self, maxsize=10, similar=eq):
+        self.maxsize = maxsize
+        self.keys = list()
+        self.items = list()
+        self.similar = similar
+    
+    def update(self, profile):
+        """Update the hall of fame with the *population* by replacing the
+        worst individuals in it by the best individuals present in
+        *population* (if they are better). The size of the hall of fame is
+        kept constant.
+        
+        :param population: A list of individual with a distanceFromTarget attribute to
+                           update the hall of fame with.
+        """
+        if len(self) == 0 and self.maxsize !=0:
+            # Working on an empty hall of fame is problematic for the
+            # "for else"
+            self.insert(profile)
+        
+        if profile.objective < self[-1].objective or len(self) < self.maxsize:
+            for hofer in self:
+                # Loop through the hall of fame to check for any
+                # similar individual
+                if self.similar(profile, hofer):
+                    break
+            else:
+                # The profile is unique and strictly better than
+                # the worst
+                if len(self) >= self.maxsize:
+                    self.remove(-1)
+                self.insert(profile)
+    
+    def insert(self, item):
+        """Insert a new individual in the hall of fame using the
+        :func:`~bisect.bisect_right` function. The inserted individual is
+        inserted on the right side of an equal individual. Inserting a new 
+        individual in the hall of fame also preserve the hall of fame's order.
+        This method **does not** check for the size of the hall of fame, in a
+        way that inserting a new individual in a full hall of fame will not
+        remove the worst individual to maintain a constant size.
+        
+        :param item: The individual with a distanceFromTarget attribute to insert in the
+                     hall of fame.
+        """
+        item = deepcopy(item)
+        i = bisect_right(self.keys, item.objective)
+        self.items.insert(len(self) - i, item)
+        self.keys.insert(i, item.objective)
+    
+    def remove(self, index):
+        """Remove the specified *index* from the hall of fame.
+        
+        :param index: An integer giving which item to remove.
+        """
+        del self.keys[len(self) - (index % len(self) + 1)]
+        del self.items[index]
+    
+    def clear(self):
+        """Clear the hall of fame."""
+        del self.items[:]
+        del self.keys[:]
+
+    def __len__(self):
+        return len(self.items)
+
+    def __getitem__(self, i):
+        return self.items[i]
+
+    def __iter__(self):
+        return iter(self.items)
+
+    def __reversed__(self):
+        return reversed(self.items)
+    
+    def __str__(self):
+        return str(self.items)
 
 
 class targetFlight(flight):
@@ -44,6 +141,8 @@ class targetFlight(flight):
     windowDuration : int
         The duration for which to download weather data (in hours). Flights
         will be sampled within this range.
+    N_Pareto : int
+        The number of 
 
     See Also
     --------
@@ -61,6 +160,7 @@ class targetFlight(flight):
                  nozzleLift,
                  payloadTrainWeight,
                  inflationTemperature,
+                 N_Pareto=10,
                  windowDuration=24,
                  HD=False,
                  maxFlightTime=18000,
@@ -73,7 +173,8 @@ class targetFlight(flight):
                  outputFile='',
                  debugging=False,
                  log_to_file=False,
-                 progress_to_file=False):
+                 progress_to_file=False,
+                 launchSiteForecasts=[]):
 
         self.targetLat = targetLat
         self.targetLon = targetLon
@@ -82,16 +183,22 @@ class targetFlight(flight):
         self.windowDuration = windowDuration
         self.launchSites = launchSites
 
+        self.end_dateTime = self.start_dateTime + timedelta(hours=windowDuration)
+        self.bestProfile = None
+
         # This section could be made faster if launch sites are clustered into
         # single forecasts (and therefore, less download requests)
-        self.launchSiteForecasts = [forecastEnvironment(site[0], site[1], site[2], start_dateTime,
-                                    inflationTemperature=inflationTemperature,
-                                    forceNonHD=(not HD),
-                                    forecastDuration=windowDuration,
-                                    debugging=False,
-                                    progressHandler=None,
-                                    load_on_init=False
-                                    ) for site in launchSites]
+        if launchSiteForecasts:
+            self.launchSiteForecasts = launchSiteForecasts
+        else:
+            self.launchSiteForecasts = [forecastEnvironment(site[0], site[1], site[2], start_dateTime,
+                                        inflationTemperature=inflationTemperature,
+                                        forceNonHD=(not HD),
+                                        forecastDuration=windowDuration,
+                                        debugging=False,
+                                        progressHandler=None,
+                                        load_on_init=False
+                                        ) for site in launchSites]
 
     # self.simflight = flight(balloonGasType,
     #                         balloonModel,
@@ -125,7 +232,21 @@ class targetFlight(flight):
                                 log_to_file=False,
                                 progress_to_file=False)
 
-    def targetDistance(self, X, best=[], appendResult=True):
+    # @functools.wraps(flight.fly)
+    # def fly(self, flightNumber, launchDateTime, runPreflight=True,
+    #     profileClass=targetFlightProfile):
+        
+    #     See flight class fly method for docs.
+
+    #     Default profile class is changed in this method, to allow self.results
+    #     to be populated with profiles that contain information about their
+    #     distance from the target, and the input vector X passed to
+    #     self.targetDistance.
+        
+    #     super(targetFlight, self).fly(flightNumber, launchDateTime,
+    #         runPreflight=True, profileClass=profileClass)
+
+    def targetDistance(self, X, appendResult=False):
         """
         Parameters
         ----------
@@ -141,16 +262,23 @@ class targetFlight(flight):
         distance : scalar
             The euclidean norm of [target_lon - lon, target_lat - lat] (degrees)
         """
-        t = X[0]
-        launchDateTime = self.start_dateTime + timedelta(t)
-        result, solution = self.fly(0, launchDateTime)
-        landing_lat = result['result'][2][-1]
-        landing_lon = result['result'][3][-1]
-        if appendResult:
-            self.results.append(result)
-        best = []
+        t = int(X[0])
+        launchDateTime = self.start_dateTime + timedelta(hours=t)
+        resultProfile, solution = self.fly(0, launchDateTime)
+        resultProfile.X = X
 
-        return np.linalg.norm(np.array([self.targetLat, self.targetLon]) - np.array([landing_lat, landing_lon]))
+        landing_lat = resultProfile.latitudeProfile[-1]
+        landing_lon = resultProfile.longitudeProfile[-1]
+        dist = np.linalg.norm(np.array([self.targetLat, self.targetLon]) - np.array([landing_lat, landing_lon]))
+        resultProfile.distanceFromTarget = dist
+        # Store normalised objective (negative) as this is a minimization. Used
+        # in the hall of fame production and sorting.
+        resultProfile.objective = - dist
+
+        # Use the hall of fame to store this profile
+        self.results.update(resultProfile)
+
+        return dist
 
     def bruteForce(self):
         """ Sample the parameter space and form a map of the landing site
@@ -158,30 +286,26 @@ class targetFlight(flight):
 
         Currently only considers time
         """
-        self.results = []
+        dts = np.arange(self.windowDuration)
 
-        distance_map = {}
+        # ensure the hall of fame remembers all individuals profiles
+        self.results = HallOfFame(maxsize=len(dts))
+
+        dateTimeVec = self.start_dateTime + dts * timedelta(hours=1)
+
         for i, launchSiteForecast in enumerate(self.launchSiteForecasts):
             self.environment = launchSiteForecast
 
-            for j, t in enumerate(datetimeVector):
+            for j, t in enumerate(dts):
                 # distance_lift_vec = np.zeros(np.length(nozzelLift_Vector))
                 # brute force approach
-                distance = self.targetDistance(t)
+                dtime = dateTimeVec[j]
+                self.targetDistance([t])
                 # distance_lift_vec[k] = distance
 
-                distance_map[t] = distance
-
-        best_datetime = min(distance_map.items(), key=operator.itemgetter(1))[0]
-
-        # This seemed like the best way to extract the path from the
-        # key obtained from the distance map. Note that the best_result
-        # dict should only contain one entry, unless simulations are
-        # duplicated
-        best_result = [result_dict for result_dict in self.results if result_dict['launchDateTime'] == best_datetime]
-        self.best_result = best_result[0]
-        return best_result[0], distance_map
-
+        bestProfile = self.results[0]
+        self.bestProfile = bestProfile
+        return bestProfile
 
     def optimizeTargetLandingSite(self, method='Nelder-Mead', **kwargs):
         """
@@ -200,10 +324,6 @@ class targetFlight(flight):
         # to also get weather to cover a flight of duration <maxFlightTime>,
         # starting at the end of the window.
         # scipy.optimize.fmin_ 
-         
-        datetimeVector = [self.start_dateTime + timedelta(hours=t)
-                            for t in range(self.windowDuration)]
-
 
         # # Estimated maximum bound of nozzle lift is that required for an ascent
         # # rate of 6 m/s
@@ -258,12 +378,11 @@ class targetFlight(flight):
         ax = fig.add_subplot(111, projection='3d')
         plt.axis('equal')
 
-        for result_dict in self.results:
-            result = result_dict['result']
-            lat_arr, lon_arr, alt_arr = result[2:5]
+        for profile in self.results:
+            lat_arr, lon_arr, alt_arr = profile.latitudeProfile, profile.longitudeProfile, profile.altitudeProfile
             ax.plot(lat_arr, lon_arr, alt_arr, 'b-')
 
-        best_lat, best_lon, best_alt = self.best_result['result'][2:5]
+        best_lat, best_lon, best_alt = self.bestProfile.latitudeProfile, self.bestProfile.longitudeProfile,self.bestProfile.altitudeProfile
         ax.plot(best_lat, best_lon, best_alt, 'k-', label='Best')
         ax.plot([self.targetLat], [self.targetLon], [self.targetElev], 'gx', label='target')
         ax.legend(loc='lower left')
@@ -280,12 +399,11 @@ class targetFlight(flight):
 
         plt.axis('equal')
 
-        for result_dict in self.results:
-            result = result_dict['result']
-            lat_arr, lon_arr, alt_arr = result[2:5]
+        for profile in self.results:
+            lat_arr, lon_arr, alt_arr = profile.latitudeProfile, profile.longitudeProfile, profile.altitudeProfile
             ax.plot(lat_arr[-1], lon_arr[-1], 'bx')
             
-        best_lat, best_lon, best_alt = self.best_result['result'][2:5]
+        best_lat, best_lon, best_alt = self.bestProfile.latitudeProfile, self.bestProfile.longitudeProfile,self.bestProfile.altitudeProfile
         ax.plot(self.targetLat, self.targetLon, 'gx', label='Target')
         ax.plot(self.launchSites[0][0], self.launchSites[0][1], 'rx', label='Launch Site')
         ax.plot(best_lat[-1], best_lon[-1], 'kx', label='Best')

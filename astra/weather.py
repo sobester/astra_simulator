@@ -931,7 +931,7 @@ class forecastEnvironment(environment):
         self._GFSmodule = GFS.GFS_Handler.fromFiles(fileDict,
             lat=self.launchSiteLat, lon=self.launchSiteLon,
             date_time=self._UTC_time, HD=False,
-            forecastDuration=forecastDuration,
+            forecastDuration=self.forecastDuration,
             debugging=self.debugging)
 
         # Setup the standard environment data access functions

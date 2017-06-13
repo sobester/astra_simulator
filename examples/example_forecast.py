@@ -38,7 +38,7 @@ if __name__ == "__main__":
                        nozzleLift=1,                                # kg
                        payloadTrainWeight=0.433,                    # kg
                        parachuteModel='SPH36',
-                       numberOfSimRuns=10,
+                       numberOfSimRuns=1,
                        trainEquivSphereDiam=0.1,                    # m
                        floatingFlight=False,
                        excessPressureCoeff=1,
