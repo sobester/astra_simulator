@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-06-13 18:20:14
+# @Last Modified time: 2017-06-15 10:45:49
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from datetime import datetime, timedelta
@@ -17,6 +17,7 @@ from copy import deepcopy
 from operator import eq
 import functools
 from . import global_tools as tools
+from .flight_tools import nozzleLiftFixedAscent
 import matplotlib.dates as mdates
 
 
@@ -202,22 +203,6 @@ class targetFlight(flight):
                                         progressHandler=None,
                                         load_on_init=False
                                         ) for site in launchSites]
-
-    # self.simflight = flight(balloonGasType,
-    #                         balloonModel,
-    #                         nozzleLift,
-    #                         payloadTrainWeight, 
-    #                         HD=HD,
-    #                         maxFlightTime=maxFlightTime,
-    #                         parachuteModel=parachuteModel,
-    #                         numberOfSimRuns=1,      # This uses mean params (not MC)
-    #                         trainEquivSphereDiam=trainEquivSphereDiam,
-    #                         floatingFlight=False,   # For now, only allow bursting flights
-    #                         ventingStart=ventingStart,
-    #                         excessPressureCoeff=excessPressureCoeff,
-    #                         debugging=False,
-    #                         log_to_file=False,
-    #                         progress_to_file=False)
                             
         super(targetFlight, self).__init__(environment=None,
                                 balloonGasType=balloonGasType,
@@ -234,6 +219,15 @@ class targetFlight(flight):
                                 debugging=False,
                                 log_to_file=False,
                                 progress_to_file=False)
+
+        # Set some max a min bounds on ascent rate
+        self.minAscentRate = 1.5
+        self.maxAscentRate = 6
+
+        # Define a list of input vectors Xs (to the target distance function),
+        # and a list of objective scores Ys for plotting later:
+        self.Xs = []
+
 
     # @functools.wraps(flight.fly)
     # def fly(self, flightNumber, launchDateTime, runPreflight=True,
@@ -266,15 +260,20 @@ class targetFlight(flight):
             The euclidean norm of [target_lon - lon, target_lat - lat] (degrees)
         """
         t = X[0]
-        print(t)
+        nozzleLift = X[1]
+        self.nozzleLift = nozzleLift
         launchDateTime = self.start_dateTime + timedelta(hours=t)
         resultProfile, solution = self.fly(0, launchDateTime)
-        resultProfile.X = X
 
         landing_lat = resultProfile.latitudeProfile[-1]
         landing_lon = resultProfile.longitudeProfile[-1]
         dist = tools.haversine(landing_lat, landing_lon, self.targetLat, self.targetLon)
+
+        # Storing attributes on the fly is bad from a software engineering
+        # standpoint, but it works:
+        resultProfile.X = X
         resultProfile.distanceFromTarget = dist
+
         # Store normalised objective (negative) as this is a minimization. Used
         # in the hall of fame production and sorting.
         resultProfile.objective = - dist
@@ -284,32 +283,73 @@ class targetFlight(flight):
 
         return dist
 
+    def _callbackStoreResult(self, xk):
+        self.Xs.append(xk)
+
     def bruteForce(self):
         """ Sample the parameter space and form a map of the landing site
         distance landscape
 
         Currently only considers time
         """
-        dts = list(range(self.windowDuration))
+        # Number of x-y points to use
+        Nx = int(self.windowDuration / 4) + 1    # run 4 hourly calculations
+        Ny = 21
 
-        # ensure the hall of fame remembers all individuals profiles
-        self.results = HallOfFame(maxsize=len(dts))
+        # Keep all paths for now, to visualize the landscape of nozzle lift
+        self.results = HallOfFame(maxsize=Nx * Ny)
+
+        dts = np.linspace(0, self.windowDuration, Nx)
+
+        distances = np.zeros([Nx, Ny])
 
         dateTimeVec = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
 
-        for i, launchSiteForecast in enumerate(self.launchSiteForecasts):
-            self.environment = launchSiteForecast
 
-            for j, t in enumerate(dts):
-                # distance_lift_vec = np.zeros(np.length(nozzelLift_Vector))
-                # brute force approach
-                dtime = dateTimeVec[j]
-                self.targetDistance([t])
-                # distance_lift_vec[k] = distance
+        for launchSiteForecast in self.launchSiteForecasts:
+            self.environment = launchSiteForecast
+            # Estimated maximum bound of nozzle lift for target ascent rates
+            self.nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
+                self._balloonWeight, self.payloadTrainWeight,
+                self.environment.inflationTemperature,
+                self.environment.getPressure(self.launchSiteLat,
+                                                  self.launchSiteLon,
+                                                  self.launchSiteElev,
+                                                  self.start_dateTime),
+                self._gasMolecularMass, self.excessPressureCoeff,
+                CD=(0.225 + 0.425)/2.)
+            self.nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
+                    self._balloonWeight, self.payloadTrainWeight,
+                    self.environment.inflationTemperature,
+                    self.environment.getPressure(self.launchSiteLat,
+                                                      self.launchSiteLon,
+                                                      self.launchSiteElev,
+                                                      self.start_dateTime),
+                    self._gasMolecularMass, self.excessPressureCoeff,
+                    CD=(0.225 + 0.425)/2.)
+
+
+            nozzleLiftVec = np.linspace(self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny)
+            X, Y = np.meshgrid(dts, nozzleLiftVec)
+
+            logger.info("Date range: [{}, {}], Nx={} points".format(
+                dateTimeVec[0], dateTimeVec[-1], Nx))
+            logger.info("Nozzle Lift range: [{}, {}] (kg), Ny={} points".format(
+                self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny))
+
+            logger.debug("Running brute force calculation")
+            for i, t in enumerate(dts):
+                for j, nozzleLift in enumerate(nozzleLiftVec):
+                    # brute force approach
+                    logger.debug("Running flight for datetime {}, nozzleLift={}kg".format(
+                        self.start_dateTime + timedelta(hours=t), nozzleLift))
+                    distance = self.targetDistance([t, nozzleLift])
+                    # distance_lift_vec[k] = distance
+                    distances[i, j] = distance
 
         bestProfile = self.results[0]
         self.bestProfile = bestProfile
-        return bestProfile
+        return bestProfile, dateTimeVec, nozzleLiftVec, distances
 
     def optimizeTargetLandingSite(self, method='Nelder-Mead', maxsize=10, **kwargs):
         """
@@ -333,15 +373,32 @@ class targetFlight(flight):
         # starting at the end of the window.
         # scipy.optimize.fmin_ 
 
-        # # Estimated maximum bound of nozzle lift is that required for an ascent
-        # # rate of 6 m/s
-
-        # nozzleLiftLowerBound = 
-        # nozzleLiftUpperBound = 
-        # nozzelLift_Vector = []
         self.results = HallOfFame(maxsize=10)
+        self.Xs = []
 
         # distance_map = {}
+        # # For now, assume the first is the only interesting launch site
+        # Estimated maximum bound of nozzle lift for target ascent rates
+        self.environment = self.launchSiteForecasts[0]
+
+        self.nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
+            self._balloonWeight, self.payloadTrainWeight,
+            self.environment.inflationTemperature,
+            self.environment.getPressure(self.launchSiteLat,
+                                              self.launchSiteLon,
+                                              self.launchSiteElev,
+                                              self.start_dateTime),
+            self._gasMolecularMass, self.excessPressureCoeff,
+            CD=(0.225 + 0.425)/2.)
+        self.nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
+                self._balloonWeight, self.payloadTrainWeight,
+                self.environment.inflationTemperature,
+                self.environment.getPressure(self.launchSiteLat,
+                                                  self.launchSiteLon,
+                                                  self.launchSiteElev,
+                                                  self.start_dateTime),
+                self._gasMolecularMass, self.excessPressureCoeff,
+                CD=(0.225 + 0.425)/2.)
 
         if method == 'Nelder-Mead':
             try:
@@ -351,12 +408,15 @@ class targetFlight(flight):
                 x0 = 0.5 * self.windowDuration
             res = opt.minimize(self.targetDistance, x0=x0,
                                           method='Nelder-Mead',
+                                          callback=self._callbackStoreResult,
                                           **kwargs)
             bestProfile = self.results[0]
             self.bestProfile = bestProfile
         elif method == 'DE':
             res = opt.differential_evolution(self.targetDistance, 
-                bounds=[(0, self.windowDuration - self.maxFlightTime/3600.)])
+                bounds=[(0, self.windowDuration - self.maxFlightTime/3600.),
+                        (nozzleLiftLowerBound, nozzleLiftUpperBound)],
+                callback=self._callbackStoreResult)
             bestProfile = self.results[0]
             self.bestProfile = bestProfile
         # elif method == 'L-BFGS-B':
@@ -435,7 +495,8 @@ class targetFlight(flight):
         fig.show()
         return fig, ax
 
-    def plotLandingSiteDistances(self, fig=None, ax=None, marker='bx', bestMarker='b*'):
+    def plotLandingSiteDistanceContours(self, dateTimeVector, nozzleLiftVector, distances,
+        fig=None, ax=None, bestMarker='b*', appendLabel=''):
         """Plots the ground distance of the landing sites contained in
         self.results from the target landing site.
 
@@ -447,7 +508,7 @@ class targetFlight(flight):
         if not ax:
             ax = fig.add_subplot(111)
             ax.set_xlabel('Date and Time')
-            ax.set_ylabel(r'Ground Distance (km)')
+            ax.set_ylabel('Nozzle Lift')
             xtick_locator = mdates.AutoDateLocator()
             xtick_formatter = mdates.AutoDateFormatter(xtick_locator)
             ax.xaxis.set_major_locator(xtick_locator)
@@ -457,19 +518,45 @@ class targetFlight(flight):
             date_end = (self.start_dateTime + timedelta(hours=self.windowDuration))
             ax.set_xlim(date_start, date_end)
             fig.autofmt_xdate()
-
-        dateTimes = []
-        distances = []
-        for prof in self.results:
-            dateTime = prof.launchDateTime
-            dateTimes.append(dateTime)
-            distance = prof.distanceFromTarget
-            distances.append(distance)
             
-        ax.plot(dateTimes, distances, marker, label='Trajectory simulations')
-        ax.plot(self.bestProfile.launchDateTime, self.bestProfile.distanceFromTarget, bestMarker, markersize=8, label='Brute Force min')
+        CS = ax.contour(dateTimeVector, nozzleLiftVector, distances, label='Landing sites'+appendLabel)
+        ax.plot(self.bestProfile.launchDateTime, self.bestProfile.X[1], bestMarker, markersize=8, label='min' + appendLabel)
 
         fig.show()
 
         legend = ax.legend(loc='lower right')
+        ax.clabel(CS, inline=1, fontsize=12)
+        return fig, ax
+
+    def plotLandingSites(self, fig=None, ax=None, marker='bx', bestMarker='b*', appendLabel=''):
+        """Plots the ground distance of the landing sites contained in
+        self.results from the target landing site.
+
+        Requires a call to any of the optimisation of brute force calculations
+        to populate self.results.
+        """
+        if not fig:
+            fig = plt.figure()
+        if not ax:
+            ax = fig.add_subplot(111)
+            ax.set_xlabel('Date and Time')
+            ax.set_ylabel('Nozzle Lift')
+            xtick_locator = mdates.AutoDateLocator()
+            xtick_formatter = mdates.AutoDateFormatter(xtick_locator)
+            ax.xaxis.set_major_locator(xtick_locator)
+            ax.xaxis.set_major_formatter(xtick_formatter)
+            # ax.xaxis.set_minor_locator(hours)
+            date_start = self.start_dateTime
+            date_end = (self.start_dateTime + timedelta(hours=self.windowDuration))
+            ax.set_xlim(date_start, date_end)
+            fig.autofmt_xdate()
+ 
+        dateTimes, nozzleLifts = zip(*self.Xs)
+
+        ax.plot(dateTimes, nozzleLifts, marker, label='Landing sites'+appendLabel)
+        ax.plot(self.bestProfile.launchDateTime, self.bestProfile.distanceFromTarget, bestMarker, markersize=8, label='min' + appendLabel)
+
+        fig.show()
+
+        # legend = ax.legend(loc='lower right')
         return fig, ax

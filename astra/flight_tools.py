@@ -9,6 +9,7 @@ diameter and drag.
 University of Southampton
 """
 from math import pi
+import numpy as np
 
 
 # Constants
@@ -24,6 +25,14 @@ MIXEDGAS_MOLECULAR_MASS = {
     "Hydrogen": (0.985 * MOLECULAR_MASS['hydrogen'] +
                 0.015 * MOLECULAR_MASS['air'])
     }
+
+
+def density(ambientPressMbar, gasMolecularMass,
+    ambientTempC):
+    R = 8.31447 # m^3Pa/mol K
+    return ambientPressMbar * 100 * gasMolecularMass / (
+        R * (ambientTempC + 273.15))
+
 
 def liftingGasMass(nozzleLift, balloonMass, ambientTempC,
     ambientPressMbar, gasMolecularMass, excessPressureCoefficient):
@@ -43,16 +52,53 @@ def liftingGasMass(nozzleLift, balloonMass, ambientTempC,
     -------
     gas_mass, balloon_volume, balloon_diameter : tuple (float, float, float
     """
-    R = 8.31447 # m^3Pa/mol K
-    gasDensity = excessPressureCoefficient * ambientPressMbar * 100 * gasMolecularMass / (
-        R * (ambientTempC + 273.15))
-    airDensity = ambientPressMbar * 100 * MOLECULAR_MASS['air'] / (R * (ambientTempC + 273.15))
+    gasDensity = excessPressureCoefficient * density(ambientPressMbar,
+                                                     gasMolecularMass,
+                                                     ambientTempC)
+    airDensity = density(ambientPressMbar, MOLECULAR_MASS['air'], ambientTempC)
 
     balloonVolume = (nozzleLift + balloonMass) / (airDensity - gasDensity)
     gasMass = balloonVolume * gasDensity
     balloonDiameter = (6. * balloonVolume / pi) ** (1. / 3)
 
     return [gasMass, balloonVolume, balloonDiameter]
+
+
+def nozzleLiftFixedAscent(ascentRate, balloonMass, payloadMass, ambientTempC,
+    ambientPressMbar, gasMolecularMass, excessPressureCoefficient, CD):
+    """Calculates the nozzle lift, gas mass, and balloon Volume
+
+    Parameters
+    ----------
+    ascentRate : scalar
+
+    """
+    g = 9.81
+    gasDensity = excessPressureCoefficient * density(ambientPressMbar,
+                                                     gasMolecularMass,
+                                                     ambientTempC)
+    airDensity = density(ambientPressMbar, MOLECULAR_MASS['air'],
+                            ambientTempC)
+    # Formulate the 3rd order polynomial of r from the force balance eq:
+    p0 = 4 / 3. * pi * (airDensity - gasDensity) * g
+    p1 = - 1 / 2. * airDensity * ascentRate ** 2 * CD * pi
+    # no coefficient in terms of r^1
+    p2 = 0
+    p3 = - (balloonMass + payloadMass) * g
+    roots = np.roots([p0, p1, p2, p3])
+    # Note: This *should* extract the reasonable solution, as the other two
+    # should be complex conjugates
+    solns = [np.real(r) for r in roots if r.imag==0 and r.real > 0]
+    if len(solns) == 1:
+        r = solns[0]
+    else:
+        # Multiple real roots were found...
+        assert(all(r == solns[0] for r in solns)),\
+            "Distinct real positive roots were found: {}".format(solns)
+        r = solns[0]
+    # Note that g is not present here, as we want the nozzle lift in kg
+    nozzleLift = 4 / 3. * pi * r ** 3 * (airDensity - gasDensity) - balloonMass
+    return nozzleLift
 
 
 def gasMassForFloat(currentAltitude, floatingAltitude,

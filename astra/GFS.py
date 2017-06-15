@@ -368,6 +368,13 @@ class GFS_Handler(object):
             dataResults.append(HTTPresponse.read().decode('utf-8'))
         return dataResults
 
+    def processNOAARequest(self, requestVar, cycle, requestTime):
+        """Downloads data from a NOAA request url, before generating the
+        matrix and interpolator
+        """
+        return NotImplementedError
+
+
     def _NOAA_request_all(self, cycle, requestTime, progressHandler):
         """Requests temperature, altitude and U-V wind direction data from the
         NOAA GFS system for the ranges specified in the class, and for the
@@ -464,7 +471,7 @@ class GFS_Handler(object):
         # Have to keep a mutable progress dict to be updated by the hook
         # function:
         progress = [0]
-        def increment_progress(*args, **kwargs):
+        def increment_progress(reponse, *args, **kwargs):
             # Hook function that updates a progress file via progressHandler.
             # args do nothing, but will be passed by the request hook anyway,
             # so need to do a type of hack that will ignore those inputs
@@ -486,7 +493,7 @@ class GFS_Handler(object):
             return results
 
 
-    def downloadForecast(self, progressHandler=None, use_async=True):
+    def downloadForecast(self, progressHandler=None, use_async=True, requestAll=True):
         """
         Connect to the Global Forecast System and download the closest cycle
         available to the date_time required. The cycle date and time is stored
@@ -534,6 +541,9 @@ class GFS_Handler(object):
                                        currentDateTime.day,
                                        cycleTime)
 
+        data_matrices = {}
+        data_maps = {}
+
         #######################################################################
         # TRY TO DOWNLOAD DATA WITH THE LATEST CYCLE. IF NOT AVAILABLE, TRY
         # WITH AN EARLIER ONE
@@ -546,6 +556,8 @@ class GFS_Handler(object):
         # latest cycle is not guaranteed to be available. If data is not
         # available, it tries with 1 cycle older, until one is found with data
         # available. If no cycles are found, the method raises a runtime error.
+
+        # if requestAll:
         for pastCycle in range(25):
             # This is just a flag to make sure that if no data is found, it
             # stops the whole download and re-starts the loop with an older
@@ -589,13 +601,16 @@ class GFS_Handler(object):
         if not results:
             raise RuntimeError('No available GFS cycles found!')
 
-        data_matrices = {}
-        data_maps = {}
         for ivar, (requestVar, dataResults) in enumerate(results.items()):
             # except with the data_matrices might be better)
             # Convert the data to matrix and map and store progress
             data_matrices[requestVar], data_maps[requestVar] =\
                 self._generate_matrix(dataResults)
+
+        # else:
+            # Download data for each parameter separately. This may have
+            # better memory usage for downloading large windows of data
+            
 
         #######################################################################
         # PROCESS DATA AND PERFORM CONVERSIONS AS REQUIRED
