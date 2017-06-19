@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 earthRadius = 6371009  # m
 
 
+# Pass through the @profile decorator if line profiler (kernprof) is not in use
+try:
+    builtins.profile
+except AttributeError:
+    def profile(func):
+        return func
+
+
 def get_urldict_async(urls_dict, hooks_dict=None):
     """An asynchronous helper function for making multiple url requests per
     key in url_dict
@@ -53,10 +61,14 @@ def get_urldict_async(urls_dict, hooks_dict=None):
     reqs = (grequests.get(u, hooks=hooks_dict) for u in urls_list)
     responses = grequests.map(reqs)
     results = {r.url: r.text for r in responses}
-    # get the url expected at each location for each key in url_dict, then
-    # insert the retrieved data at this location
-    results_dict = {key: [results[url] for url in url_list] for key, url_list in urls_dict.items()}
-    return results_dict
+    if any(result[0] == "<" for result in results.values()):
+        logger.debug("GFS cycle not found.")
+        return
+    else:
+        # get the url expected at each location for each key in url_dict, then
+        # insert the retrieved data at this location
+        results_dict = {key: [results[url] for url in url_list] for key, url_list in urls_dict.items()}
+        return results_dict
 
 
 
@@ -124,13 +136,16 @@ class GFS_Handler(object):
                           'vgrdprs': 'V Winds'}
 
     def __init__(self, lat, lon, date_time, HD=True, forecastDuration=4,
-        debugging=False, progressHandler=None):
+        use_async=True, requestSimultaneous=True, debugging=False,
+        progressHandler=None):
         # Initialize Parameters
         self.launchDateTime = date_time
         self.lat = lat
         self.lon = lon
         self.forecastDuration = forecastDuration
         self.HD = HD
+        self.use_async = use_async
+        self.requestSimultaneous = requestSimultaneous
         self.cycleDateTime = None
         self.firstAvailableTime = None
 
@@ -361,18 +376,36 @@ class GFS_Handler(object):
 
             try:
                 HTTPresponse = urlopen(requestURL)
+                response = HTTPresponse.read().decode('utf-8')
             except:
                 logger.exception(
                     'Error while connecting to the GFS server.')
                 raise
-            dataResults.append(HTTPresponse.read().decode('utf-8'))
+            if response[0] == "<":
+                logger.debug("GFS cycle not found.")
+                return
+            else:
+                dataResults.append(response)
         return dataResults
 
     def processNOAARequest(self, requestVar, cycle, requestTime):
         """Downloads data from a NOAA request url, before generating the
         matrix and interpolator
+
+        Allows the response to go out of scope after creating the matrices,
+        hence it may decrease the memory overhead compared with downloading
+        all items simultaneously
         """
-        return NotImplementedError
+        response = self._NOAA_request(requestVar, cycle, requestTime)
+        if response:
+            requestReadableName = self.weatherParameters[requestVar]
+            logger.debug('{} data downloaded'.format(
+                requestReadableName))
+
+            data_matrix, data_map = self._generate_matrix(response)
+        else:
+            data_matrix, data_map = {}, {}
+        return data_matrix, data_map
 
 
     def _NOAA_request_all(self, cycle, requestTime, progressHandler):
@@ -407,19 +440,16 @@ class GFS_Handler(object):
         progressHandler(0, 1)
         for ivar, requestVar in enumerate(self.weatherParameters.keys()):
             dataResults = self._NOAA_request(requestVar,
-                                             cycle,
-                                             requestTime
-                                             )
-            if dataResults[-1][0] == "<":
-                # Data from this cycle is not available. Return an empty result
-                logger.debug('Cycle not available.')
-                return {}
-            else:
+                                                 cycle,
+                                                 requestTime
+                                                 )
+            if dataResults:
+                progressHandler(1. / len(self.weatherParameters) * (ivar + 1), 1)
                 requestReadableName = self.weatherParameters[requestVar]
                 logger.debug('{} data downloaded'.format(
                     requestReadableName))
-                progressHandler(1. / len(self.weatherParameters) * ivar, 1)
-
+            else:
+                return
             results[requestVar] = dataResults
         return results
 
@@ -483,17 +513,109 @@ class GFS_Handler(object):
         # write to the file after the first update
         results = get_urldict_async(urls, hooks_dict={'response': increment_progress})
 
-        # Check only one returned values, since if one exists, then the cycle
-        # was available and all should exist:
-        if results[var][-1][0] == "<":
-            # Data from this cycle is not available. Return an empty result
-            logger.debug('Cycle not available.')
-            return {}
+        return results
+
+    def getNOAAMatricesMapsCycle(self, thisCycle, requestTime, progressHandler):
+        """
+        """
+        data_matrices = {}
+        data_maps = {}
+        # This is just a flag to make sure that if no data is found, it
+        # stops the whole download and re-starts the loop with an older
+        # cycle.
+        progressHandler(0, 1)
+
+        if self.requestSimultaneous:
+            ###############################################################
+            # DOWNLOAD DATA FOR ALL PARAMETERS
+            if self.use_async:
+                results = self._NOAA_request_all_async(thisCycle,
+                                                       requestTime,
+                                                       progressHandler)
+
+            else:
+                results = self._NOAA_request_all(thisCycle,
+                                                 requestTime,
+                                                 progressHandler)
+            if results:
+                for ivar, (requestVar, dataResults) in enumerate(results.items()):
+                    # Convert the data to matrix and map
+                    data_matrices[requestVar], data_maps[requestVar] =\
+                        self._generate_matrix(dataResults)                
         else:
-            return results
+            for ivar, requestVar in enumerate(self.weatherParameters.keys()):
+                # except with the data_matrices might be better)
+                # Convert the data to matrix and map and store progress
+                data_matrix, data_map = \
+                    self.processNOAARequest(requestVar, thisCycle,
+                                            requestTime)
+                if data_map:
+                    progressHandler(1. / len(self.weatherParameters) * (ivar+1), 1)
+                    data_matrices[requestVar], data_maps[requestVar] =\
+                        data_matrix, data_map
+                else:
+                    return {}, {}
+        # If it got here, the GFS was found: break the outer loop
+        return data_matrices, data_maps
+
+    def getNOAAData(self, simulationDateTime, latestCycleDateTime, progressHandler):
+        """
+        """
+        #######################################################################
+        # TRY TO DOWNLOAD DATA WITH THE LATEST CYCLE. IF NOT AVAILABLE, TRY
+        # WITH AN EARLIER ONE
+
+        # pastCycle is a variable that indicates how many cycles in the past
+        # we're downloading data from. It first tries with 0, indicating the
+        # most recent cycle: this is calculated, knowing that cycles are issued
+        # every six hours. Sometimes, however, it takes a few hours for data to
+        # become available, or a cycle is skipped. This means that data for the
+        # latest cycle is not guaranteed to be available. If data is not
+        # available, it tries with 1 cycle older, until one is found with data
+        # available. If no cycles are found, the method raises a runtime error.
+
+        for pastCycle in range(25):
+            logger.debug('Attempting to download cycle data.')
+            thisCycle = latestCycleDateTime - timedelta(hours=pastCycle * 6)
+            self.cycleDateTime = thisCycle
+
+            # Initialize time parameter
+            timeFromForecast = simulationDateTime - thisCycle
+            hoursFromForecast = timeFromForecast.total_seconds() / 3600.
+
+            # GFS time index for the first dataset to be requested
+            # (1 GFS index = three hours)
+            requestTime = floor(hoursFromForecast / 3.)
+
+            # This stores the actual time of the first dataset downloaded. It's
+            # going to be used to convert real time to GFS "time coordinates"
+            # (see getGFStime(time) function)
+            self.firstAvailableTime = self.cycleDateTime + timedelta(hours=requestTime * 3)
+
+            # Always download an extra time dataset
+            # PChambers note: probably +1 because of the index slicing system
+            # used on the GFS servers, i.e., times 0:5 will get times
+            # 0, 1, 2, 3 and 4
+            requestTime = [requestTime, requestTime + ceil(
+                self.forecastDuration / 3.) + 1]
+            thisCycle = latestCycleDateTime - timedelta(hours=pastCycle * 6)
+            self.cycleDateTime = thisCycle
+
+            # Main download
+            data_matrices, data_maps = self.getNOAAMatricesMapsCycle(
+                thisCycle, requestTime, progressHandler)
+
+            if (data_matrices and data_maps):
+                break
+            else:
+                logger.debug("Moving to next cycle")
+                continue
+        if not (data_matrices and data_maps):
+            raise RuntimeError('No available GFS cycles found!')
+        return data_matrices, data_maps
 
 
-    def downloadForecast(self, progressHandler=None, use_async=True, requestAll=True):
+    def downloadForecast(self, progressHandler=None):
         """
         Connect to the Global Forecast System and download the closest cycle
         available to the date_time required. The cycle date and time is stored
@@ -541,76 +663,8 @@ class GFS_Handler(object):
                                        currentDateTime.day,
                                        cycleTime)
 
-        data_matrices = {}
-        data_maps = {}
-
-        #######################################################################
-        # TRY TO DOWNLOAD DATA WITH THE LATEST CYCLE. IF NOT AVAILABLE, TRY
-        # WITH AN EARLIER ONE
-
-        # pastCycle is a variable that indicates how many cycles in the past
-        # we're downloading data from. It first tries with 0, indicating the
-        # most recent cycle: this is calculated, knowing that cycles are issued
-        # every six hours. Sometimes, however, it takes a few hours for data to
-        # become available, or a cycle is skipped. This means that data for the
-        # latest cycle is not guaranteed to be available. If data is not
-        # available, it tries with 1 cycle older, until one is found with data
-        # available. If no cycles are found, the method raises a runtime error.
-
-        # if requestAll:
-        for pastCycle in range(25):
-            # This is just a flag to make sure that if no data is found, it
-            # stops the whole download and re-starts the loop with an older
-            # cycle.
-            logger.debug('Attempting to download cycle data.')
-            thisCycle = latestCycleDateTime - timedelta(hours=pastCycle * 6)
-            self.cycleDateTime = thisCycle
-
-            # Initialize time parameter
-            timeFromForecast = simulationDateTime - thisCycle
-            hoursFromForecast = timeFromForecast.total_seconds() / 3600.
-
-            # GFS time index for the first dataset to be requested
-            # (1 GFS index = three hours)
-            requestTime = floor(hoursFromForecast / 3.)
-
-            # This stores the actual time of the first dataset downloaded. It's
-            # going to be used to convert real time to GFS "time coordinates"
-            # (see getGFStime(time) function)
-            self.firstAvailableTime = self.cycleDateTime + timedelta(hours=requestTime * 3)
-
-            # Always download an extra time dataset
-            # PChambers note: probably +1 because of the index slicing system
-            # used on the GFS servers, i.e., times 0:5 will get times
-            # 0, 1, 2, 3 and 4
-            requestTime = [requestTime, requestTime + ceil(self.forecastDuration / 3.) + 1]
-
-            ###################################################################
-            # DOWNLOAD DATA FOR ALL PARAMETERS
-            if use_async:
-                results = self._NOAA_request_all_async(thisCycle, requestTime, progressHandler)
-            else:
-                results = self._NOAA_request_all(thisCycle, requestTime, progressHandler)
-
-            if results:
-                break
-            else:
-                logger.debug('Moving to next cycle...')
-                continue           
-
-        if not results:
-            raise RuntimeError('No available GFS cycles found!')
-
-        for ivar, (requestVar, dataResults) in enumerate(results.items()):
-            # except with the data_matrices might be better)
-            # Convert the data to matrix and map and store progress
-            data_matrices[requestVar], data_maps[requestVar] =\
-                self._generate_matrix(dataResults)
-
-        # else:
-            # Download data for each parameter separately. This may have
-            # better memory usage for downloading large windows of data
-            
+        data_matrices, data_maps = self.getNOAAData(simulationDateTime,
+            latestCycleDateTime, progressHandler)
 
         #######################################################################
         # PROCESS DATA AND PERFORM CONVERSIONS AS REQUIRED

@@ -313,7 +313,6 @@ class flight(object):
         required.
         """
         self.reset()
-
         if debugging:
             log_lev = logging.DEBUG
         else:

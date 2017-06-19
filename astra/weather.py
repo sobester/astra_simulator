@@ -755,6 +755,8 @@ class forecastEnvironment(environment):
                  inflationTemperature=0.0,
                  forceNonHD=False,
                  forecastDuration=4,
+                 use_async=True,
+                 requestSimultaneous=True,
                  debugging=False,
                  progressHandler=None,
                  load_on_init=False):
@@ -764,6 +766,8 @@ class forecastEnvironment(environment):
         # Initialize extra forecast-specific variables
         self.forceNonHD = forceNonHD
         self.forecastDuration = forecastDuration
+        self.use_async = use_async
+        self.requestSimultaneous = requestSimultaneous
 
         self._GFSmodule = None
 
@@ -831,6 +835,8 @@ class forecastEnvironment(environment):
         self._GFSmodule = GFS.GFS_Handler(self.launchSiteLat,
                                           self.launchSiteLon,
                                           self._UTC_time,
+                                          use_async=self.use_async,
+                                          requestSimultaneous=self.requestSimultaneous,
                                           HD=(not self.forceNonHD),
                                           forecastDuration=
                                             self.forecastDuration,

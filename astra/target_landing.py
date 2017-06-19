@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-06-15 10:45:49
+# @Last Modified time: 2017-06-15 17:11:09
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from datetime import datetime, timedelta
@@ -166,6 +166,7 @@ class targetFlight(flight):
                  inflationTemperature,
                  N_Pareto=10,
                  windowDuration=24,
+                 requestSimultaneous=False,
                  HD=False,
                  maxFlightTime=18000,
                  parachuteModel=None,
@@ -179,7 +180,6 @@ class targetFlight(flight):
                  log_to_file=False,
                  progress_to_file=False,
                  launchSiteForecasts=[]):
-
         self.targetLat = targetLat
         self.targetLon = targetLon
         self.targetElev = targetElev
@@ -199,9 +199,10 @@ class targetFlight(flight):
                                         inflationTemperature=inflationTemperature,
                                         forceNonHD=(not HD),
                                         forecastDuration=windowDuration,
-                                        debugging=False,
+                                        debugging=debugging,
                                         progressHandler=None,
-                                        load_on_init=False
+                                        load_on_init=False,
+                                        requestSimultaneous=requestSimultaneous,
                                         ) for site in launchSites]
                             
         super(targetFlight, self).__init__(environment=None,
@@ -219,6 +220,39 @@ class targetFlight(flight):
                                 debugging=False,
                                 log_to_file=False,
                                 progress_to_file=False)
+
+        # Module level loggers seem to cause issues for derived classes spread
+        # accross modules: trying to fix this here
+        if debugging:
+            log_lev = logging.DEBUG
+        else:
+            log_lev = logging.WARNING
+
+        if log_to_file:
+            # Reset the app logger handlers and reset basic config
+            # file handler (this may not be the best way to do this for all
+            # situations, but it should allow decent logging on the web app
+            # while not interrupting with general use of astra as a standalone
+            # library
+            for handler in logging.root.handlers[:]:
+                logging.root.removeHandler(handler)
+
+            # Set a maximum log file size of 5MB:
+            handler = logging.handlers.RotatingFileHandler('astra_py_error.log',
+                mode='a',
+                maxBytes=10*1024*1024)
+            formatter = logging.Formatter('%(asctime)s.%(msecs)d %(levelname)s:%(name)s %(message)s')
+            handler.setFormatter(formatter)
+
+            stream = logging.StreamHandler()
+            stream.setFormatter(formatter)
+
+            logging.basicConfig(handlers=[handler, stream], level=log_lev)
+
+            # rootlogger.addHandler(handler)
+            # rootlogger.setLevel(log_lev)
+        else:
+            logger.setLevel(log_lev)
 
         # Set some max a min bounds on ascent rate
         self.minAscentRate = 1.5
@@ -261,10 +295,22 @@ class targetFlight(flight):
         """
         t = X[0]
         nozzleLift = X[1]
-        self.nozzleLift = nozzleLift
-        launchDateTime = self.start_dateTime + timedelta(hours=t)
-        resultProfile, solution = self.fly(0, launchDateTime)
 
+        logger.debug("Running flight for datetime {}, nozzleLift={}kg".format(
+                        self.start_dateTime + timedelta(hours=t), nozzleLift))
+
+        # nozzle lift is an access controlled variable, which may raise an error if
+        # lower than the payload lift: return a penalty if this is the case
+        try:
+            self.nozzleLift = nozzleLift
+        except ValueError:
+            # Pay a penalty larger than the maximum possible distance (Earth circumference)
+            return 5e6
+
+        launchDateTime = self.start_dateTime + timedelta(hours=t)
+
+        resultProfile, solution = self.fly(0, launchDateTime)
+        
         landing_lat = resultProfile.latitudeProfile[-1]
         landing_lon = resultProfile.longitudeProfile[-1]
         dist = tools.haversine(landing_lat, landing_lon, self.targetLat, self.targetLon)
@@ -283,7 +329,7 @@ class targetFlight(flight):
 
         return dist
 
-    def _callbackStoreResult(self, xk):
+    def _callbackStoreResult(self, xk, convergence):
         self.Xs.append(xk)
 
     def bruteForce(self):
@@ -341,8 +387,6 @@ class targetFlight(flight):
             for i, t in enumerate(dts):
                 for j, nozzleLift in enumerate(nozzleLiftVec):
                     # brute force approach
-                    logger.debug("Running flight for datetime {}, nozzleLift={}kg".format(
-                        self.start_dateTime + timedelta(hours=t), nozzleLift))
                     distance = self.targetDistance([t, nozzleLift])
                     # distance_lift_vec[k] = distance
                     distances[i, j] = distance
@@ -400,27 +444,26 @@ class targetFlight(flight):
                 self._gasMolecularMass, self.excessPressureCoeff,
                 CD=(0.225 + 0.425)/2.)
 
-        if method == 'Nelder-Mead':
+        if method in ('Nelder-Mead', 'L-BFGS-B'):
             try:
                 x0 = kwargs.pop('x0')
             except KeyError:
                 logger.info('No Initial guess x0 provided. Using half of the windowDuration.')
                 x0 = 0.5 * self.windowDuration
             res = opt.minimize(self.targetDistance, x0=x0,
-                                          method='Nelder-Mead',
-                                          callback=self._callbackStoreResult,
+                                          method=method,
+                                          callback=(lambda x: self._callbackStoreResult(x, convergence=None)),
                                           **kwargs)
             bestProfile = self.results[0]
             self.bestProfile = bestProfile
         elif method == 'DE':
             res = opt.differential_evolution(self.targetDistance, 
                 bounds=[(0, self.windowDuration - self.maxFlightTime/3600.),
-                        (nozzleLiftLowerBound, nozzleLiftUpperBound)],
-                callback=self._callbackStoreResult)
+                        (self.nozzleLiftLowerBound, self.nozzleLiftUpperBound)],
+                                             callback=self._callbackStoreResult,
+                                             **kwargs)
             bestProfile = self.results[0]
             self.bestProfile = bestProfile
-        # elif method == 'L-BFGS-B':
-            # 
 
         else:
             raise ValueError('No known optimization method for {}'.format(method))
@@ -518,17 +561,19 @@ class targetFlight(flight):
             date_end = (self.start_dateTime + timedelta(hours=self.windowDuration))
             ax.set_xlim(date_start, date_end)
             fig.autofmt_xdate()
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0,
+                             box.width, box.height * 0.9])
             
         CS = ax.contour(dateTimeVector, nozzleLiftVector, distances, label='Landing sites'+appendLabel)
         ax.plot(self.bestProfile.launchDateTime, self.bestProfile.X[1], bestMarker, markersize=8, label='min' + appendLabel)
 
         fig.show()
-
-        legend = ax.legend(loc='lower right')
+        legend = ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=2)
         ax.clabel(CS, inline=1, fontsize=12)
         return fig, ax
 
-    def plotLandingSites(self, fig=None, ax=None, marker='bx', bestMarker='b*', appendLabel=''):
+    def plotLandingSiteDistances(self, fig=None, ax=None, marker='bx', bestMarker='b*', appendLabel=''):
         """Plots the ground distance of the landing sites contained in
         self.results from the target landing site.
 
@@ -550,13 +595,15 @@ class targetFlight(flight):
             date_end = (self.start_dateTime + timedelta(hours=self.windowDuration))
             ax.set_xlim(date_start, date_end)
             fig.autofmt_xdate()
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0,
+                             box.width, box.height * 0.9])
  
-        dateTimes, nozzleLifts = zip(*self.Xs)
-
+        dts, nozzleLifts = zip(*self.Xs)
+        dateTimes = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
         ax.plot(dateTimes, nozzleLifts, marker, label='Landing sites'+appendLabel)
-        ax.plot(self.bestProfile.launchDateTime, self.bestProfile.distanceFromTarget, bestMarker, markersize=8, label='min' + appendLabel)
+        ax.plot(self.bestProfile.launchDateTime, self.bestProfile.X[1], bestMarker, markersize=8, label='min' + appendLabel)
 
         fig.show()
-
-        # legend = ax.legend(loc='lower right')
+        legend = ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=2)
         return fig, ax
