@@ -372,10 +372,10 @@ class flight(object):
         self.cutdownAltitude = cutdownAltitude
         self.cutdownTimeout = cutdownTimeout
 
-        if not self.cutdownAltitude != numpy.inf:
+        if self.cutdownTimeout != numpy.inf:
             self.cutdown = True
             logger.debug("Cut down will be triggered after {} hours of flight".format(self.cutdownTimeout))
-        if not self.floatDuration != numpy.inf:
+        if self.floatDuration != numpy.inf:
             logger.debug("Cut down will be triggered after {} seconds of floating flight".format(self.floatDuration))
 
         logger.debug("Maximum flight time: {} seconds".format(self.maxFlightTime))
