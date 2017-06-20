@@ -881,7 +881,7 @@ class flight(object):
             ascentRate = y[1]
 
             if self.cutdown and not self._lastFlightBurst:
-                if altitude >= self.cutdownAltitude or t >= self.cutdownTimeout:
+                if altitude >= self.cutdownAltitude or t >= self.cutdownTimeout*3600:
                     # Burst the balloon
                     logger.debug('Bursting the balloon at {}m altitude'.format(
                         altitude))
@@ -890,7 +890,7 @@ class flight(object):
                     return numpy.array([0.0, 0.0])
 
             if self.floatingFlight:
-                if not self._floatingReached and altitude > (self.floatingAltitude - self.ventingStart):
+                if not self._floatingReached and altitude > self.floatingAltitude:
                     self._floatingReached = True
                     logger.debug("Floating altitude reached.")
                     self._t_floatStart = t
