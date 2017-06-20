@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-06-15 17:11:09
+# @Last Modified time: 2017-06-19 16:45:06
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from datetime import datetime, timedelta
@@ -189,22 +189,8 @@ class targetFlight(flight):
 
         self.end_dateTime = self.start_dateTime + timedelta(hours=windowDuration)
         self.bestProfile = None
+        self.launchSiteForecasts = []
 
-        # This section could be made faster if launch sites are clustered into
-        # single forecasts (and therefore, less download requests)
-        if launchSiteForecasts:
-            self.launchSiteForecasts = launchSiteForecasts
-        else:
-            self.launchSiteForecasts = [forecastEnvironment(site[0], site[1], site[2], start_dateTime,
-                                        inflationTemperature=inflationTemperature,
-                                        forceNonHD=(not HD),
-                                        forecastDuration=windowDuration,
-                                        debugging=debugging,
-                                        progressHandler=None,
-                                        load_on_init=False,
-                                        requestSimultaneous=requestSimultaneous,
-                                        ) for site in launchSites]
-                            
         super(targetFlight, self).__init__(environment=None,
                                 balloonGasType=balloonGasType,
                                 balloonModel=balloonModel,
@@ -220,6 +206,35 @@ class targetFlight(flight):
                                 debugging=False,
                                 log_to_file=False,
                                 progress_to_file=False)
+
+        # Use a maximum lateral upper atmospheric speed to determine if this
+        # flight is feasible, given an 'as the crow flies' flight entirely in
+        # the jet stream, assuming max speed of 200 km/hr
+        self.maxLateralSpeed = 200    # m/s 
+        self.cutoffDistance = self.maxLateralSpeed * self.maxFlightTime / 3600.
+
+        # This section could be made faster if launch sites are clustered into
+        # single forecasts (and therefore, less download requests)
+        if launchSiteForecasts:
+            self.launchSiteForecasts = launchSiteForecasts
+        else:
+            self.launchSiteForecasts = []
+            for site in launchSites:
+                if tools.haversine(site[0], site[1], targetLat, targetLon) < self.cutoffDistance:
+                    self.launchSiteForecasts.append(forecastEnvironment(site[0], site[1], site[2], start_dateTime,
+                                                inflationTemperature=inflationTemperature,
+                                                forceNonHD=(not HD),
+                                                forecastDuration=windowDuration,
+                                                debugging=debugging,
+                                                progressHandler=None,
+                                                load_on_init=False,
+                                                requestSimultaneous=requestSimultaneous,
+                                                )
+                    )
+                else:
+                    logger.warning("Launch site lat {}, lon {} is too far from the landing site.".format(
+                        site[0], site[1]))
+                    # Need to log progress to file for the web interface here
 
         # Module level loggers seem to cause issues for derived classes spread
         # accross modules: trying to fix this here

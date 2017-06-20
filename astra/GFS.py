@@ -11,7 +11,7 @@ University of Southampton
 """
 from datetime import datetime, timedelta
 from math import floor, ceil
-from six.moves import range
+from six.moves import range, builtins
 from six.moves.urllib.request import urlopen
 import logging
 import grequests
@@ -388,6 +388,7 @@ class GFS_Handler(object):
                 dataResults.append(response)
         return dataResults
 
+    @profile
     def processNOAARequest(self, requestVar, cycle, requestTime):
         """Downloads data from a NOAA request url, before generating the
         matrix and interpolator
@@ -544,17 +545,19 @@ class GFS_Handler(object):
                         self._generate_matrix(dataResults)                
         else:
             for ivar, requestVar in enumerate(self.weatherParameters.keys()):
-                # except with the data_matrices might be better)
                 # Convert the data to matrix and map and store progress
-                data_matrix, data_map = \
-                    self.processNOAARequest(requestVar, thisCycle,
-                                            requestTime)
-                if data_map:
-                    progressHandler(1. / len(self.weatherParameters) * (ivar+1), 1)
-                    data_matrices[requestVar], data_maps[requestVar] =\
-                        data_matrix, data_map
-                else:
-                    return {}, {}
+                for i in range(5):
+                    if requestVar not in data_matrices:
+                        data_matrix, data_map = \
+                            self.processNOAARequest(requestVar, thisCycle,
+                                                    requestTime)
+                        if data_map:
+                            progressHandler(1. / len(self.weatherParameters) * (ivar+1), 1)
+                            data_matrices[requestVar], data_maps[requestVar] =\
+                                data_matrix, data_map
+                        else:
+                            raise RuntimeError("'{}' data failed to download for this cycle. Cannot proceed.")
+                            
         # If it got here, the GFS was found: break the outer loop
         return data_matrices, data_maps
 
@@ -601,20 +604,24 @@ class GFS_Handler(object):
             thisCycle = latestCycleDateTime - timedelta(hours=pastCycle * 6)
             self.cycleDateTime = thisCycle
 
-            # Main download
-            data_matrices, data_maps = self.getNOAAMatricesMapsCycle(
-                thisCycle, requestTime, progressHandler)
+            # Probe the system to see if data is available for this cycle:
+            dataResults = self._NOAA_request('tmpprs', thisCycle,
+                [requestTime[0], requestTime[0] + 1])
 
-            if (data_matrices and data_maps):
+            if (dataResults):
                 break
             else:
                 logger.debug("Moving to next cycle")
-                continue
+
+        # Main download
+        data_matrices, data_maps = self.getNOAAMatricesMapsCycle(
+            thisCycle, requestTime, progressHandler)
+
         if not (data_matrices and data_maps):
             raise RuntimeError('No available GFS cycles found!')
         return data_matrices, data_maps
 
-
+    @profile
     def downloadForecast(self, progressHandler=None):
         """
         Connect to the Global Forecast System and download the closest cycle

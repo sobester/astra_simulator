@@ -16,7 +16,7 @@ Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 """
 from datetime import timedelta
 import logging
-from six.moves import range
+from six.moves import range, builtins
 import numpy
 from scipy.interpolate import UnivariateSpline
 from . import wind_time_perturbation
@@ -28,6 +28,14 @@ import os
 
 # SETUP ERROR LOGGING AND DEBUGGING
 logger = logging.getLogger(__name__)
+
+
+# Pass through the @profile decorator if line profiler (kernprof) is not in use
+try:
+    builtins.profile
+except AttributeError:
+    def profile(func):
+        return func
 
 
 class environment(object):
@@ -986,7 +994,6 @@ class forecastEnvironment(environment):
         self.getViscosity = viscosity
 
         self._weatherLoaded = True
-
 
     def perturbWind(self, numberOfFlights):
         """
