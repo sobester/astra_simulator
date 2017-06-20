@@ -36,7 +36,9 @@ if __name__ == "__main__":
                        excessPressureCoeff=1,
                        outputFile=os.path.join('.', 'astra_output_floating'),
                        debugging=True,
-                       log_to_file=True)
+                       log_to_file=True,
+                       floatDuration=30   #seconds
+                       cutdownTimeout=3*3600)
 
 
     #simFlight.maxFlightTime = 5*60*60

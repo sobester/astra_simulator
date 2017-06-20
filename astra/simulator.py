@@ -151,7 +151,7 @@ class flightProfile(object):
             kmlMarkers.append(
                 '</description>\n<Point>\n<coordinates>\n%.5f,%.5f,%.5f\n</coordinates>\n<altitudeMode>absolute</altitudeMode>\n</Point>\n</Placemark>\n' % (
                     self.longitudeProfile[self.highestAltIndex],
-                    self.latitudeProfile[self.highestAltIndex], self.highestAlt))
+                    self.latitudeProfile[self.highestAltIndex], self.highestAltitude))
         return kmlMarkers
 
 
@@ -194,8 +194,8 @@ class flightProfile(object):
             else:
                 jsonFloatMarkers.append(
                     '{ "lat" : %.5f, "lng" : %.5f, "alt" : %.5f, "label" : "Target Altitude Reached", "simNumber" : "%d", "otherData" : "Target altitude: %.0f m" }\n' % (
-                        self.latitudeProfile[highestAltIndex],
-                        self.longitudeProfile[highestAltIndex],
+                        self.latitudeProfile[self.highestAltIndex],
+                        self.longitudeProfile[self.highestAltIndex],
                         self.highestAltitude,
                         self.flightNumber,
                         self.highestAltitude))
@@ -300,10 +300,12 @@ class flight(object):
                  trainEquivSphereDiam=0.1,
                  floatingFlight=False,
                  floatingAltitude=None,
+                 floatDuration=numpy.inf,
                  ventingStart=1000,
                  excessPressureCoeff=1.,
                  cutdown=False,
                  cutdownAltitude=None,
+                 cutdownTimeout=numpy.inf,
                  outputFile='',
                  debugging=False,
                  log_to_file=False,
@@ -362,11 +364,13 @@ class flight(object):
         self.trainEquivSphereDiam = trainEquivSphereDiam     # m
         self.floatingFlight = floatingFlight
         self.floatingAltitude = floatingAltitude             # m
+        self.floatDuration = floatDuration
         self.ventingStart = ventingStart     # m (below the target altitude)
         self.excessPressureCoeff = excessPressureCoeff
         self.maxFlightTime = maxFlightTime
         self.cutdown = cutdown
         self.cutdownAltitude = cutdownAltitude
+        self.cutdownTimeout = cutdownTimeout
 
         # Simulation precision - not user defined!
         self._samplingTime = 3               # seconds
@@ -850,6 +854,7 @@ class flight(object):
         logger.debug('Beginning simulation of flight %d' % (flightNumber + 1))
 
         self._lastFlightBurst = False
+        self._floatingReached = False
         self._lastFlightBurstAlt = 0.0
         self._lastBurstIndex = 0
         self._currentLatPosition = self.launchSiteLat
@@ -868,7 +873,7 @@ class flight(object):
             ascentRate = y[1]
 
             if self.cutdown and not self._lastFlightBurst:
-                if altitude >= self.cutdownAltitude:
+                if altitude >= self.cutdownAltitude or t >= self.cutdownTimeout:
                     # Burst the balloon
                     logger.debug('Bursting the balloon at {}m altitude'.format(
                         altitude))
@@ -949,19 +954,28 @@ class flight(object):
                 # If floating flight, calculate the nozzle lift if the gas is
                 # being vented.
                 if self.floatingFlight:
-                    nozzleLift = ft.nozzleLiftForFloat(
-                        self.nozzleLift,
-                        self.environment.getDensity(self._currentLatPosition,
-                                                    self._currentLonPosition,
-                                                    altitude,
-                                                    currentTime),
-                        gasDensity,
-                        balloonVolume,
-                        self._balloonWeight,
-                        altitude,
-                        self.floatingAltitude,
-                        ventStart=self.ventingStart
-                    )
+                    if t < self.floatDuration:
+                        nozzleLift = ft.nozzleLiftForFloat(
+                            self.nozzleLift,
+                            self.environment.getDensity(self._currentLatPosition,
+                                                        self._currentLonPosition,
+                                                        altitude,
+                                                        currentTime),
+                            gasDensity,
+                            balloonVolume,
+                            self._balloonWeight,
+                            altitude,
+                            self.floatingAltitude,
+                            ventStart=self.ventingStart
+                        )
+                    else:
+                        # Burst the balloon
+                        logger.debug('Bursting the balloon at {}m altitude'.format(
+                            altitude))
+                        self._lastFlightBurst = True
+                        self._lastFlightBurstAlt = altitude
+                        return numpy.array([0.0, 0.0])
+
                 else:
                     nozzleLift = self.nozzleLift
 
@@ -1335,7 +1349,7 @@ class flight(object):
                     'Balloon Landed'
             else:
                 # Remarks: Target Altitude Reached
-                csvMatrix[currentPosition + self.highestAltIndex, 5] =\
+                csvMatrix[currentPosition + profile.highestAltIndex, 5] =\
                     'Balloon has reached target altitude'
 
             currentPosition += numberOfPoints
