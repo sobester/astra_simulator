@@ -61,7 +61,7 @@ parser.add_argument('--altitude', type=float, help="Floating Altitude (m)")
 parser.add_argument('--noHD', default=False, action='store_true',
     help="Force non HD weather data")
 parser.add_argument('--debug', action='store_true', help="Use debugging mode")
-parser.add_argument('--cutdownAltitude', default=0., type=float,
+parser.add_argument('--cutdownAltitude', default=np.inf, type=float,
     help="The altitude at which to activate cutdown (ignored if --cutdown is not provided)")
 
 parser.add_argument('--cutdownTimeout', default=np.inf, type=float, 

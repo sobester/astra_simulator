@@ -881,6 +881,8 @@ class flight(object):
             ascentRate = y[1]
 
             if self.cutdown and not self._lastFlightBurst:
+                print(t, self.cutdownTimeout*3600)
+                print(altitude, self.cutdownAltitude)
                 if altitude >= self.cutdownAltitude or t >= self.cutdownTimeout*3600:
                     # Burst the balloon
                     logger.debug('Bursting the balloon at {}m altitude'.format(
