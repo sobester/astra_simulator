@@ -12,6 +12,7 @@ from datetime import datetime
 import argparse
 
 from astra.simulator import *
+import numpy as np
 
 parser = argparse.ArgumentParser(description="""Process inputs to the ASTRA high
     altitude balloon flight planner for simulation""")
@@ -47,7 +48,7 @@ parser.add_argument('-k', type=float, default=0.0,
     help="Inflation Temperature (degC)")
 parser.add_argument('-d', type=float, default=0.1,
     help="Train equivalent sphere diameter (m)")
-parser.add_argument('-l', type=float, default=18000, help="Max Flight Time")
+parser.add_argument('-l', type=float, default=5, help="Max Flight Time")
 # Sounding related parameters
 parser.add_argument('--sounding', type=str, help="Sounding file name")
 parser.add_argument('-e', type=float, help="Distance from sounding (m)")
@@ -62,6 +63,12 @@ parser.add_argument('--noHD', default=False, action='store_true',
 parser.add_argument('--debug', action='store_true', help="Use debugging mode")
 parser.add_argument('--cutdownAltitude', default=0., type=float,
     help="The altitude at which to activate cutdown (ignored if --cutdown is not provided)")
+
+parser.add_argument('--cutdownTimeout', default=np.inf, type=float, 
+    help="The time after which cutdown is triggered (seconds)")
+parser.add_argument('--floatDuration', default=np.inf, type=float, 
+    help="The duration of floating float allowed before cutdown is triggered (seconds)")
+
 
 def main():
     global debug
@@ -94,7 +101,7 @@ def main():
                                              launchSiteElev=args.z,        # m
                                              inflationTemperature=args.k,
                                              dateAndTime=launch_datetime,
-                                             forecastDuration=args.l/3600.,
+                                             forecastDuration=args.l,
                                              forceNonHD=args.noHD,
                                              debugging=args.debug,
                                              load_on_init=False
@@ -131,11 +138,13 @@ def main():
                        payloadTrainWeight=args.p,                    # kg
                        parachuteModel=args.c,
                        numberOfSimRuns=args.r,
-                       maxFlightTime=args.l,
+                       maxFlightTime=args.l*3600,
                        trainEquivSphereDiam=args.d,                    # m
                        floatingFlight=args.floating,
                        floatingAltitude=args.altitude,                      # m
                        cutdown=cutdown,
+                       cutdownTimeout=args.cutdownTimeout,
+                       floatDuration=args.floatDuration,
                        cutdownAltitude=args.cutdownAltitude,
                        excessPressureCoeff=1,
                        outputFile=args.o,

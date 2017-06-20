@@ -37,7 +37,7 @@ if __name__ == "__main__":
                        outputFile=os.path.join('.', 'astra_output_floating'),
                        debugging=True,
                        log_to_file=True,
-                       floatDuration=30   #seconds
+                       floatDuration=30*60,  #seconds
                        cutdownTimeout=3*3600)
 
 

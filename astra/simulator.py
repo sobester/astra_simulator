@@ -301,10 +301,10 @@ class flight(object):
                  floatingFlight=False,
                  floatingAltitude=None,
                  floatDuration=numpy.inf,
-                 ventingStart=1000,
+                 ventingStart=3000,
                  excessPressureCoeff=1.,
                  cutdown=False,
-                 cutdownAltitude=None,
+                 cutdownAltitude=numpy.inf,
                  cutdownTimeout=numpy.inf,
                  outputFile='',
                  debugging=False,
@@ -372,6 +372,13 @@ class flight(object):
         self.cutdownAltitude = cutdownAltitude
         self.cutdownTimeout = cutdownTimeout
 
+        if not self.cutdownAltitude != numpy.inf:
+            self.cutdown = True
+            logger.debug("Cut down will be triggered after {} hours of flight".format(self.cutdownTimeout))
+        if not self.floatDuration != numpy.inf:
+            logger.debug("Cut down will be triggered after {} seconds of floating flight".format(self.floatDuration))
+
+        logger.debug("Maximum flight time: {} seconds".format(self.maxFlightTime))
         # Simulation precision - not user defined!
         self._samplingTime = 3               # seconds
 
@@ -855,6 +862,7 @@ class flight(object):
 
         self._lastFlightBurst = False
         self._floatingReached = False
+        self._t_floatStart = None
         self._lastFlightBurstAlt = 0.0
         self._lastBurstIndex = 0
         self._currentLatPosition = self.launchSiteLat
@@ -880,6 +888,12 @@ class flight(object):
                     self._lastFlightBurst = True
                     self._lastFlightBurstAlt = altitude
                     return numpy.array([0.0, 0.0])
+
+            if self.floatingFlight:
+                if not self._floatingReached and altitude > (self.floatingAltitude - self.ventingStart):
+                    self._floatingReached = True
+                    logger.debug("Floating altitude reached.")
+                    self._t_floatStart = t
 
             # Calculate current position in time and space
             # This is used to fetch the correct atmospheric data if the GFS is
@@ -954,7 +968,15 @@ class flight(object):
                 # If floating flight, calculate the nozzle lift if the gas is
                 # being vented.
                 if self.floatingFlight:
-                    if t < self.floatDuration:
+
+                    if self._floatingReached and t - self._t_floatStart > self.floatDuration:
+                            # Burst the balloon
+                            logger.debug('Bursting the balloon at {}m altitude after {} seconds of floating flight'.format(
+                                altitude, (t - self._t_floatStart)))
+                            self._lastFlightBurst = True
+                            self._lastFlightBurstAlt = altitude
+                            return numpy.array([0.0, 0.0])
+                    else:
                         nozzleLift = ft.nozzleLiftForFloat(
                             self.nozzleLift,
                             self.environment.getDensity(self._currentLatPosition,
@@ -968,13 +990,6 @@ class flight(object):
                             self.floatingAltitude,
                             ventStart=self.ventingStart
                         )
-                    else:
-                        # Burst the balloon
-                        logger.debug('Bursting the balloon at {}m altitude'.format(
-                            altitude))
-                        self._lastFlightBurst = True
-                        self._lastFlightBurstAlt = altitude
-                        return numpy.array([0.0, 0.0])
 
                 else:
                     nozzleLift = self.nozzleLift
