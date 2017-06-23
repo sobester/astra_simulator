@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-04-21 17:21:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-04-25 16:23:44
+# @Last Modified time: 2017-06-22 15:01:12
 import pytest
 from datetime import datetime, timedelta
 from astra.weather import forecastEnvironment
@@ -30,15 +30,15 @@ def example_inputs(request):
     a requested incorrect value input to check that errors are raised
     appropriately"""
     launch_datetime = datetime.now() + timedelta(days=1)
-    simEnvironment = forecastEnvironment(launchSiteLat=29.2108,      # deg
-                                         launchSiteLon=-81.0228,     # deg
-                                         launchSiteElev=4,           # m
-                                         dateAndTime=launch_datetime,
-                                         forceNonHD=True,
-                                         debugging=True)
+    # simEnvironment = forecastEnvironment(launchSiteLat=29.2108,      # deg
+    #                                      launchSiteLon=-81.0228,     # deg
+    #                                      launchSiteElev=4,           # m
+    #                                      dateAndTime=launch_datetime,
+    #                                      forceNonHD=True,
+    #                                      debugging=True)
     output_dir = os.path.join(tempfile.gettempdir(), 'astra_output')
 
-    inputs = {'environment': simEnvironment,
+    inputs = {'environment': None,
               'balloonGasType': 'Helium',
               'balloonModel': 'TA800',
               'nozzleLift': 1,                            # kg
