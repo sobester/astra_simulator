@@ -22,8 +22,15 @@ Niccolo' Zapponi, nz1g10@soton.ac.uk, 22/04/2013
 __author__ = "Niccolo' Zapponi, University of Southampton, nz1g10@soton.ac.uk"
 
 from math import floor, ceil
-
 import numpy
+from six.moves import builtins
+
+# Pass through the @profile decorator if line profiler (kernprof) is not in use
+try:
+    builtins.profile
+except AttributeError:
+    def profile(func):
+        return func
 
 
 class Linear4DInterpolator(object):
@@ -77,6 +84,7 @@ class Linear4DInterpolator(object):
         >>> myInterpolator(lat, lon, press, time)
     """
 
+    @profile
     def __init__(self, data, data_map):
         # Store data
         self.data = data

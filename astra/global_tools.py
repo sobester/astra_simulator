@@ -5,7 +5,7 @@ These tools generally perform basic unit conversions, provide simple data and
 analyze lists.
 """
 from math import sqrt, exp, sin, cos, radians, atan, atan2, tan, pi, asin, sqrt
-import numpy
+import numpy as np
 import logging
 from six.moves.urllib.request import urlopen
 import time
@@ -89,7 +89,6 @@ def dirspeed2uv(windDirection, windSpeed, resultType=None):
         raise TypeError(
             '{} is not a supported resultType. Please refer to documentation.').format
 
-
 def uv2dirspeed(u, v):
     """Convert u and v wind components to wind direction and speed.
 
@@ -104,10 +103,10 @@ def uv2dirspeed(u, v):
         windDirection is in degrees clockwise from the north. windSpeed has
         the same units as input u and v.
     """
-    windSpeed = sqrt(u ** 2 + v ** 2)
-    windDirDeg = (180 / pi) * atan2(-u, -v)
-    if windDirDeg < 0:
-        windDirDeg += 360
+    windSpeed = np.sqrt(u ** 2 + v ** 2)
+    windDirDeg = (180 / pi) * np.arctan2(-u, -v)
+
+    windDirDeg = windDirDeg % 360
 
     return windDirDeg, windSpeed
 
@@ -212,7 +211,7 @@ def find_nearest_index(array, value):
     idx : int (the index)
     """
 
-    return numpy.abs(array - value).argmin()
+    return np.abs(array - value).argmin()
 
 
 def getUTCOffset(latitude, longitude, date_time):

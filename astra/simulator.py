@@ -692,7 +692,7 @@ class flight(object):
                 # Perturb the wind for Monte Carlo.
             self.environment.perturbWind(numberOfSimRuns)
 
-    @profile
+    # @profile
     def _preflight(self, launchDateTime):
         """
         Run a series of pre-flight checks and calculations to verify the
@@ -780,7 +780,7 @@ class flight(object):
 
         logger.debug('Preflight completed!')
 
-    @profile
+    # @profile
     def fly(self, flightNumber, launchDateTime, runPreflight=True):
         """
         Execute a single simulation.

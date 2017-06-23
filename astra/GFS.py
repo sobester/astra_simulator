@@ -380,7 +380,7 @@ class GFS_Handler(object):
             except:
                 logger.exception(
                     'Error while connecting to the GFS server.')
-                raise
+                return
             if response[0] == "<":
                 logger.debug("GFS cycle not found.")
                 return
@@ -542,7 +542,8 @@ class GFS_Handler(object):
                 for ivar, (requestVar, dataResults) in enumerate(results.items()):
                     # Convert the data to matrix and map
                     data_matrices[requestVar], data_maps[requestVar] =\
-                        self._generate_matrix(dataResults)                
+                        self._generate_matrix(dataResults)
+
         else:
             for ivar, requestVar in enumerate(self.weatherParameters.keys()):
                 # Convert the data to matrix and map and store progress
@@ -556,7 +557,7 @@ class GFS_Handler(object):
                             data_matrices[requestVar], data_maps[requestVar] =\
                                 data_matrix, data_map
                         else:
-                            raise RuntimeError("'{}' data failed to download for this cycle. Cannot proceed.")
+                            raise RuntimeError("'{}' data failed to download for this cycle. Cannot proceed.".format(requestVar))
                             
         # If it got here, the GFS was found: break the outer loop
         return data_matrices, data_maps
@@ -673,7 +674,7 @@ class GFS_Handler(object):
         data_matrices, data_maps = self.getNOAAData(simulationDateTime,
             latestCycleDateTime, progressHandler)
 
-        #######################################################################
+#######################################################################
         # PROCESS DATA AND PERFORM CONVERSIONS AS REQUIRED
 
         # Convert temperatures from Kelvin to Celsius
@@ -685,23 +686,15 @@ class GFS_Handler(object):
 
         # Convert u and v winds to wind direction and wind speed matrices
 
-        # Store the current shape of the 4D matrices
-        matrixShape = data_matrices['ugrdprs'].shape
         # Convert to KNOTS and the turn into direction and speed
-        dirspeedWinds = list(map(tools.uv2dirspeed,
-            (data_matrices['ugrdprs'] * 1.9438445).ravel(),
-            (data_matrices['vgrdprs'] * 1.9438445).ravel()))
-        # Extract results
-        windDirectionMatrix = numpy.array(
-            [dirspeed[0] for dirspeed in dirspeedWinds]).reshape(matrixShape)
-        windSpeedMatrix = numpy.array(
-            [dirspeed[1] for dirspeed in dirspeedWinds]).reshape(matrixShape)
+        self.windDirData, self.windSpeedData = tools.uv2dirspeed(
+            data_matrices['ugrdprs'],
+            data_matrices['vgrdprs'])
 
         # Store results
         self.temperatureData = data_matrices['tmpprs']
         self.altitudeData = data_matrices['hgtprs']
-        self.windDirData = windDirectionMatrix
-        self.windSpeedData = windSpeedMatrix
+        self.windSpeedData *= 1.9438445    # Convert to knots
 
         self.temperatureMap = data_maps['tmpprs']
         self.altitudeMap = data_maps['hgtprs']
@@ -764,7 +757,7 @@ class GFS_Handler(object):
         #######################################################################
         # PROCESS DATA AND PERFORM CONVERSIONS AS REQUIRED
 
-        # Convert temperatures from Kelvin to Celsius
+                # Convert temperatures from Kelvin to Celsius
         data_matrices['tmpprs'] -= 273.15
 
         # Convert geopotential height to geometric altitude
@@ -773,23 +766,15 @@ class GFS_Handler(object):
 
         # Convert u and v winds to wind direction and wind speed matrices
 
-        # Store the current shape of the 4D matrices
-        matrixShape = data_matrices['ugrdprs'].shape
         # Convert to KNOTS and the turn into direction and speed
-        dirspeedWinds = list(map(tools.uv2dirspeed,
-            (data_matrices['ugrdprs'] * 1.9438445).ravel(),
-            (data_matrices['vgrdprs'] * 1.9438445).ravel()))
-        # Extract results
-        windDirectionMatrix = numpy.array(
-            [dirspeed[0] for dirspeed in dirspeedWinds]).reshape(matrixShape)
-        windSpeedMatrix = numpy.array(
-            [dirspeed[1] for dirspeed in dirspeedWinds]).reshape(matrixShape)
+        module.windDirData, module.windSpeedData = tools.uv2dirspeed(
+            data_matrices['ugrdprs'],
+            data_matrices['vgrdprs'])
 
         # Store results
         module.temperatureData = data_matrices['tmpprs']
         module.altitudeData = data_matrices['hgtprs']
-        module.windDirData = windDirectionMatrix
-        module.windSpeedData = windSpeedMatrix
+        module.windSpeedData *= 1.9438445    # Convert to knots
 
         module.temperatureMap = data_maps['tmpprs']
         module.altitudeMap = data_maps['hgtprs']
@@ -797,6 +782,7 @@ class GFS_Handler(object):
 
         return module
 
+    @profile
     def interpolateData(self, *variables):
         """
         Set up a linear 4d interpolation for each variable given and returns
@@ -1264,7 +1250,7 @@ class GFS_data_interpolator(object):
         generated by the GFS_Map.mapCoordinates() method.
     """
 
-
+    @profile
     def __init__(self, GFS_Handler, data, dmap, high_alt_interpolator=None,
         min_pressure=None):
         # Store data

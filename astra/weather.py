@@ -26,9 +26,9 @@ from . import GFS
 from types import MethodType
 import os
 
+
 # SETUP ERROR LOGGING AND DEBUGGING
 logger = logging.getLogger(__name__)
-
 
 # Pass through the @profile decorator if line profiler (kernprof) is not in use
 try:
@@ -791,6 +791,7 @@ class forecastEnvironment(environment):
             debugging=debugging,
             load_on_init=load_on_init)
 
+    @profile
     def load(self, progressHandler=None):
         """
         Create a link to the Global Forecast System and download the required
