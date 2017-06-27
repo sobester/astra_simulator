@@ -203,7 +203,7 @@ def balloonDrag(diameter, ascentRate, density, viscosity,
 
     References
     ----------
-    [1] [1] Sobester, A., Czerski, H.,  Zapponi, N., and Castro, I. P., "High
+    [1] Sobester, A., Czerski, H.,  Zapponi, N., and Castro, I. P., "High
     Altitude Gas Balloon Trajectory Prediction - a Monte Carlo Model". AIAA
     Journal, 52, (4), 2014, pp. 832-842.
     (doi:10.2514/1.J052900 <http://dx.doi.org/10.2514/1.J052900>).

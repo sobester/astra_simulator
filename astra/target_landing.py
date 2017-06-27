@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-06-19 16:45:06
+# @Last Modified time: 2017-06-27 15:31:11
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from datetime import datetime, timedelta
@@ -19,6 +19,7 @@ import functools
 from . import global_tools as tools
 from .flight_tools import nozzleLiftFixedAscent
 import matplotlib.dates as mdates
+import inspect
 
 
 logger = logging.getLogger(__name__)
@@ -46,11 +47,13 @@ class HallOfFame(object):
     (without being one completely). It is possible to retrieve its length, to
     iterate on it forward and backward and to get an item or a slice from it.
     """
-    def __init__(self, maxsize=10, similar=eq):
+    def __init__(self, maxsize=10):
         self.maxsize = maxsize
         self.keys = list()
         self.items = list()
-        self.similar = similar
+        # The profiles are unique to each X vector (no random element), so use
+        # a simple check if that input X vectors are equal to check similarity
+        self.similar = lambda prof1, prof2: True if prof1.X == prof2.X else False
     
     def update(self, profile):
         """Update the hall of fame with the *population* by replacing the
@@ -66,15 +69,8 @@ class HallOfFame(object):
             # "for else"
             self.insert(profile)
         
-        if profile.objective < self[-1].objective or len(self) < self.maxsize:
-            for hofer in self:
-                # Loop through the hall of fame to check for any
-                # similar individual
-                if self.similar(profile, hofer):
-                    break
-            else:
-                # The profile is unique and strictly better than
-                # the worst
+        if profile.objective > self[-1].objective or len(self) < self.maxsize:
+            if not any((self.similar(profile, hofer) for hofer in self)):
                 if len(self) >= self.maxsize:
                     self.remove(-1)
                 self.insert(profile)
@@ -277,22 +273,54 @@ class targetFlight(flight):
         # and a list of objective scores Ys for plotting later:
         self.Xs = []
 
+    def targetDistanceFactory(self, constantsDict):
+        """Constructs a N dimensional objective function, where N is the number
+        of arguments in self.targetDistance minus the number of arguments in
+        constantsDict
 
-    # @functools.wraps(flight.fly)
-    # def fly(self, flightNumber, launchDateTime, runPreflight=True,
-    #     profileClass=targetFlightProfile):
-        
-    #     See flight class fly method for docs.
+        Effectively, removes the parameters in constantsDict from the
+        targetDistance function, and creates a new objective where the input
+        is a vector of the remaining args.
 
-    #     Default profile class is changed in this method, to allow self.results
-    #     to be populated with profiles that contain information about their
-    #     distance from the target, and the input vector X passed to
-    #     self.targetDistance.
-        
-    #     super(targetFlight, self).fly(flightNumber, launchDateTime,
-    #         runPreflight=True, profileClass=profileClass)
+        Parameters
+        ----------
+        constantsDict : :obj:`dict`
+            The mapping of key: value pairs that will be made constant in the
+            targetDistance master objective function
+        """
+        args = inspect.signature(self.targetDistance).parameters
 
-    def targetDistance(self, X, appendResult=False):
+        remaining_args = [arg for arg in args if arg not in constantsDict]
+
+        logger.debug('Arguments in the objective function are: {}'.format(remaining_args))
+
+        # Store the list of ordered variable names that represent data in the 
+        # input X vector
+        self.variables = remaining_args
+
+        def objective(X):
+            X_kwargs = dict(zip(remaining_args, X))
+            kwargs = {**constantsDict, **X_kwargs}
+
+            # Check that Floating flight is within the bounds of zero and one,
+            # then round to give True/False(Note: this doesn't work with Nelder
+            # Mead)
+            assert(kwargs['floatingFlight'] >= 0 and kwargs['floatingFlight'] <= 1),\
+                "floatingFlight value {} cannot be rounded to an integer: check bounds".format(
+                    kwargs['floatingFlight'])
+            kwargs['floatingFlight'] = int(round(kwargs['floatingFlight']))
+
+            # Repeat for cutdown flight:
+            assert(kwargs['cutdown'] >= 0 and kwargs['cutdown'] <= 1),\
+                "cutdown value {} cannot be rounded to an integer: check bounds".format(
+                    kwargs['cutdown'])
+            kwargs['cutdown'] = int(round(kwargs['cutdown']))
+            return self.targetDistance(**kwargs)
+
+        return objective
+
+    def targetDistance(self, t, nozzleLift, floatingFlight, floatingAltitude,
+        floatDuration, cutdown, cutdownAltitude):
         """
         Parameters
         ----------
@@ -300,19 +328,30 @@ class targetFlight(flight):
             The input vector. Should contain elements,
                 x[0] :  time, in hours, after the start of the optimisation
                 window (self.startTime)
-
-        appendResult : 
         
         returns
         -------
         distance : scalar
             The euclidean norm of [target_lon - lon, target_lat - lat] (degrees)
         """
-        t = X[0]
-        nozzleLift = X[1]
+        # t = X[0]
+        # nozzleLift = X[1]
+        self.floatingFlight = floatingFlight
+        self.floatingAltitude = floatingAltitude
+        self.cutdown = cutdown
+        self.cutdownAltitude = cutdownAltitude
+        self.floatDuration = floatDuration
 
-        logger.debug("Running flight for datetime {}, nozzleLift={}kg".format(
-                        self.start_dateTime + timedelta(hours=t), nozzleLift))
+        log_msg = "Running flight for datetime {}, nozzleLift={}kg".format(
+                        self.start_dateTime + timedelta(hours=t), nozzleLift)
+
+        if floatingFlight:
+            log_msg += ", Floating Altitude {}m".format(floatingAltitude)
+        if cutdown:
+            log_msg += ", cutdown Altitude {}m".format(cutdownAltitude)
+
+
+        logger.debug(log_msg)
 
         # nozzle lift is an access controlled variable, which may raise an error if
         # lower than the payload lift: return a penalty if this is the case
@@ -325,6 +364,10 @@ class targetFlight(flight):
         launchDateTime = self.start_dateTime + timedelta(hours=t)
 
         resultProfile, solution = self.fly(0, launchDateTime)
+
+        # Penalty for flights not bursting within the time limit
+        if not resultProfile.hasBurst:
+            return 5e6
         
         landing_lat = resultProfile.latitudeProfile[-1]
         landing_lon = resultProfile.longitudeProfile[-1]
@@ -332,7 +375,8 @@ class targetFlight(flight):
 
         # Storing attributes on the fly is bad from a software engineering
         # standpoint, but it works:
-        resultProfile.X = X
+        resultProfile.X = [t, nozzleLift, floatingFlight, floatingAltitude,
+        cutdown, cutdownAltitude]
         resultProfile.distanceFromTarget = dist
 
         # Store normalised objective (negative) as this is a minimization. Used
@@ -347,16 +391,11 @@ class targetFlight(flight):
     def _callbackStoreResult(self, xk, convergence):
         self.Xs.append(xk)
 
-    def bruteForce(self):
+    def bruteForce(self, Nx, Ny):
         """ Sample the parameter space and form a map of the landing site
         distance landscape
-
         Currently only considers time
         """
-        # Number of x-y points to use
-        Nx = int(self.windowDuration / 4) + 1    # run 4 hourly calculations
-        Ny = 21
-
         # Keep all paths for now, to visualize the landscape of nozzle lift
         self.results = HallOfFame(maxsize=Nx * Ny)
 
@@ -402,7 +441,9 @@ class targetFlight(flight):
             for i, t in enumerate(dts):
                 for j, nozzleLift in enumerate(nozzleLiftVec):
                     # brute force approach
-                    distance = self.targetDistance([t, nozzleLift])
+                    distance = self.targetDistance(t, nozzleLift,
+                        floatingFlight=False, floatingAltitude=np.inf,
+                        cutdown=False, cutdownAltitude=np.inf)
                     # distance_lift_vec[k] = distance
                     distances[i, j] = distance
 
@@ -410,10 +451,122 @@ class targetFlight(flight):
         self.bestProfile = bestProfile
         return bestProfile, dateTimeVec, nozzleLiftVec, distances
 
-    def optimizeTargetLandingSite(self, method='Nelder-Mead', maxsize=10, **kwargs):
+    def bruteForceSlice(self, Nx=21, Ny=21, sliceParam='', Nslices=None, sliceBounds=()):
+        """Runs a brute force (discrete grid) of the targetDistance objective
+        function, using Nx
+
+        Parameters
+        ----------
+        Nx, Ny : int
+            Number of sampling points in Time and nozzle Lift respectively,
+            between the bounds of [0, self.windowDuration], and nozzle lift
+            calculated to achieve ascent rates between the bounds of
+            self.minAscentRate and self.maxAscentRate
+        sliceParam : string
+            variable name for which to slice the distance vs nozzle lift and
+            time landscape. Expected names are any of
+                'floatingAltitude', 'cutdownAltitude'
+        Nslices : int
+            Number of slices to use between sliceBounds to use for sliceParam
+        sliceBounds : tuple
+            the lower limit, upper limit between which to sample sliceParam
+
+        :Example:
+            >>> 
+        """
+
+        # Keep all paths for now, to visualize the landscape of nozzle lift
+        self.results = HallOfFame(maxsize=Nx * Ny)
+
+        dts = np.linspace(0, self.windowDuration, Nx)
+
+        distances = np.zeros(Nx)
+
+        dateTimeVec = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
+
+        if sliceParam:
+            assert(Nslices), "Argument 'Nslices' is required to slice the landscape through {}".format(sliceParam)
+            assert(sliceBounds), "Argument 'sliceBounds' is required to slice the landscape through {}".format(sliceParam)
+
+        # Build the objective function for these slices:
+        if sliceParam == 'floatingAltitude':
+            sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
+            constantsDict = {'floatingFlight': True, 'cutdown': False,
+                'cutdownAltitude':np.inf, 'floatDuration': np.inf}
+
+        elif sliceParam == 'cutdownAltitude':
+            cutdownFlight = True
+            sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
+            constantsDict = {'cutdown': True, 'floatingFlight': False,
+                'floatingAltitude':0, 'floatDuration': np.inf}
+
+        elif sliceParam == '':
+            # Just do the 2D case:
+            return self.bruteForce(Nx=Nx, Ny=Ny)
+
+        else:
+            logger.debug("{} is an unknown slicing parameter. See targetFlight.targetDistance parameter names".format(sliceParam))
+
+        objectiveFunction = self.targetDistanceFactory(constantsDict)
+
+        for launchSiteForecast in self.launchSiteForecasts:
+            self.environment = launchSiteForecast
+            # Estimated maximum bound of nozzle lift for target ascent rates
+            self.nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
+                self._balloonWeight, self.payloadTrainWeight,
+                self.environment.inflationTemperature,
+                self.environment.getPressure(self.launchSiteLat,
+                                                  self.launchSiteLon,
+                                                  self.launchSiteElev,
+                                                  self.start_dateTime),
+                self._gasMolecularMass, self.excessPressureCoeff,
+                CD=(0.225 + 0.425)/2.)
+            self.nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
+                    self._balloonWeight, self.payloadTrainWeight,
+                    self.environment.inflationTemperature,
+                    self.environment.getPressure(self.launchSiteLat,
+                                                      self.launchSiteLon,
+                                                      self.launchSiteElev,
+                                                      self.start_dateTime),
+                    self._gasMolecularMass, self.excessPressureCoeff,
+                    CD=(0.225 + 0.425)/2.)
+
+
+            nozzleLiftVec = np.linspace(self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny)
+
+            X, Y, Z = np.meshgrid(dts, nozzleLiftVec, sliceVec, indexing="ij")
+
+            sliceUnits = {'floatingAltitude': 'm', 'cutdownAltitude': 'm'}
+
+            logger.info("Date range: [{}, {}], Nx={} points".format(
+                dateTimeVec[0], dateTimeVec[-1], Nx))
+            logger.info("Nozzle Lift range: [{}, {}] (kg), Ny={} points".format(
+                self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny))
+            logger.info("{} range: [{}, {}] {}, Nz={} points]".format(
+                sliceParam, min(sliceBounds), max(sliceBounds),
+                sliceUnits[sliceParam], Nslices))
+            logger.debug("Running brute force calculation")
+            
+            points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+
+            # Main calculation here
+            objectiveVals = [objectiveFunction(point) for point in points]
+
+            distances = np.reshape(objectiveVals, (np.size(dts), np.size(nozzleLiftVec), np.size(sliceVec)))
+
+        bestProfile = self.results[0]
+        self.bestProfile = bestProfile
+        return bestProfile, dateTimeVec, nozzleLiftVec, sliceVec, distances
+
+    def optimizeTargetLandingSite(self, useFloating=False, useCutdown=False,
+        floatingAltitudeBounds=(), cutdownAltitudeBounds=(),
+        method='Nelder-Mead', maxsize=10, **kwargs):
         """
         Parameters
         ----------
+        params : :obj:`dict`
+            The variables which will be used in the optimization
+
         method : string
             'brute-force' : Sample flight every hour within the time window
                 *Note: this probably isn't suitable given more than two params
@@ -434,13 +587,27 @@ class targetFlight(flight):
 
         self.results = HallOfFame(maxsize=10)
         self.Xs = []
+ 
+        # Build the dictionary of constants that the objective function will
+        # ignore:
+        constantsDict = {}#{'appendResult': False}
+        if not useFloating:
+            constantsDict['floatingFlight'] = False
+            constantsDict['floatingAltitude'] = np.inf
+            constantsDict['floatDuration'] = np.inf
 
-        # distance_map = {}
+        if not useCutdown:
+            constantsDict['cutdown'] = False
+            constantsDict['cutdownAltitude'] = np.inf
+            constantsDict['floatDuration'] = np.inf
+
+        objective = self.targetDistanceFactory(constantsDict)
+
         # # For now, assume the first is the only interesting launch site
         # Estimated maximum bound of nozzle lift for target ascent rates
         self.environment = self.launchSiteForecasts[0]
 
-        self.nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
+        nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
             self._balloonWeight, self.payloadTrainWeight,
             self.environment.inflationTemperature,
             self.environment.getPressure(self.launchSiteLat,
@@ -449,7 +616,7 @@ class targetFlight(flight):
                                               self.start_dateTime),
             self._gasMolecularMass, self.excessPressureCoeff,
             CD=(0.225 + 0.425)/2.)
-        self.nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
+        nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
                 self._balloonWeight, self.payloadTrainWeight,
                 self.environment.inflationTemperature,
                 self.environment.getPressure(self.launchSiteLat,
@@ -459,44 +626,56 @@ class targetFlight(flight):
                 self._gasMolecularMass, self.excessPressureCoeff,
                 CD=(0.225 + 0.425)/2.)
 
+                # Set up the dictionary of bounds on all variables: note that some may
+        # not be passed to scipy, as this depends on the constants used in the
+        # objective function
+        boundsDict = {}
+        boundsDict['t'] = (0, self.windowDuration)
+        boundsDict['nozzleLift'] = (nozzleLiftLowerBound, nozzleLiftUpperBound)
+        boundsDict['floatingFlight'] = (0, 1)
+        boundsDict['floatingAltitude'] = floatingAltitudeBounds
+        # Limit float duration to a continuous venting (0) to the entire flight
+        # (The penalty imposed in targetDistance function should avoid this area)
+        boundsDict['floatDuration'] = (0, self.maxFlightTime)
+
+        # Cutdown parameter bounds
+        boundsDict['cutdown'] = (0, 1)
+        boundsDict['cutdownAltitude'] = cutdownAltitudeBounds
+
+        # self.variables was updated by self.targetDistanceFactory, and includes
+        # the name of all variables that will be used for optimisation, in order
+        bounds = [boundsDict[var] for var in self.variables]
+
         if method in ('Nelder-Mead', 'L-BFGS-B'):
             try:
                 x0 = kwargs.pop('x0')
             except KeyError:
-                logger.info('No Initial guess x0 provided. Using half of the windowDuration.')
-                x0 = 0.5 * self.windowDuration
-            res = opt.minimize(self.targetDistance, x0=x0,
-                                          method=method,
-                                          callback=(lambda x: self._callbackStoreResult(x, convergence=None)),
-                                          **kwargs)
+                logger.exception('An initial guess x0 is required for method {}.'.format(method))
+
+            try:
+                res = opt.minimize(objective, x0=x0, method=method,
+                                   callback=(lambda x: self._callbackStoreResult(x, convergence=None)),
+                                   bounds=bounds, args=(), **kwargs)
+            except TypeError:
+                # Likely that this method does not support bounded optimisation,
+                # so try without that argument
+                res = opt.minimize(objective, x0=x0, method=method,
+                   callback=(lambda x: self._callbackStoreResult(x, convergence=None)),
+                   args=(), **kwargs)
+
             bestProfile = self.results[0]
             self.bestProfile = bestProfile
+
         elif method == 'DE':
-            res = opt.differential_evolution(self.targetDistance, 
-                bounds=[(0, self.windowDuration - self.maxFlightTime/3600.),
-                        (self.nozzleLiftLowerBound, self.nozzleLiftUpperBound)],
-                                             callback=self._callbackStoreResult,
-                                             **kwargs)
+            res = opt.differential_evolution(objective, bounds=bounds,
+                callback=self._callbackStoreResult, **kwargs)
+
             bestProfile = self.results[0]
             self.bestProfile = bestProfile
 
         else:
             raise ValueError('No known optimization method for {}'.format(method))
         return res
-
-    # def plotBruteForceComparison(self):
-    #     """
-    #     """
-    #     fig = plt.figure()
-    #     ax = fig.add_subplot(111)
-
-    #     plt.axis('equal')
-    #     dateTimes = []
-    #     distances = []
-
-
-    #     raise NotImplementedError()
-
 
     def plotPaths3D(self, fig=None, ax=None):
         """Plots the resulting trajectories contained in self.results, along
@@ -554,12 +733,18 @@ class targetFlight(flight):
         return fig, ax
 
     def plotLandingSiteDistanceContours(self, dateTimeVector, nozzleLiftVector, distances,
-        fig=None, ax=None, bestMarker='b*', appendLabel=''):
+        fig=None, ax=None, bestMarker='b*', appendLabel='', bestProfile=None,  **kwargs):
         """Plots the ground distance of the landing sites contained in
         self.results from the target landing site.
 
         Requires a call to any of the optimisation of brute force calculations
         to populate self.results.
+
+        Parameters
+        ----------
+        kwargs :
+            Additional named args will be passed to ax.contour for plot
+            settings
         """
         if not fig:
             fig = plt.figure()
@@ -580,15 +765,72 @@ class targetFlight(flight):
             ax.set_position([box.x0, box.y0,
                              box.width, box.height * 0.9])
             
-        CS = ax.contour(dateTimeVector, nozzleLiftVector, distances, label='Landing sites'+appendLabel)
-        ax.plot(self.bestProfile.launchDateTime, self.bestProfile.X[1], bestMarker, markersize=8, label='min' + appendLabel)
+        CS = ax.contour(dateTimeVector, nozzleLiftVector, distances, label='Landing sites'+appendLabel, **kwargs)
+
+        if bestProfile:
+            ax.plot(bestProfile.launchDateTime, bestProfile.X[1], bestMarker, markersize=8, label='min' + appendLabel)
+            legend = ax.legend(loc='upper right', ncol=2)
 
         fig.show()
-        legend = ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=2)
-        ax.clabel(CS, inline=1, fontsize=12)
+        ax.clabel(CS, inline=1, fontsize=12, fmt='%.1f')
         return fig, ax
 
-    def plotLandingSiteDistances(self, fig=None, ax=None, marker='bx', bestMarker='b*', appendLabel=''):
+    def plotLandingSiteDistanceContours3D(self, dateTimeVector, nozzleLiftVector, distances,
+        fig=None, ax=None, bestMarker='b*', appendLabel='', bestProfile=None, **kwargs):
+        """Plots the ground distance of the landing sites contained in
+        self.results from the target landing site.
+
+        Requires a call to any of the optimisation of brute force calculations
+        to populate self.results.
+
+        Parameters
+        ----------
+        kwargs :
+            Additional named args will be passed to ax.contour for plot
+            settings
+        """
+        if not fig:
+            fig = plt.figure()
+        if not ax:
+            ax = fig.add_subplot(111, projection='3d')
+            ax.set_xlabel('Date and Time')
+            ax.set_ylabel('Nozzle Lift')
+            ax.set_zlabel('Distance (km)')
+            # xtick_locator = mdates.AutoDateLocator()
+            # xtick_formatter = mdates.AutoDateFormatter(xtick_locator)
+            # ax.xaxis.set_major_locator(xtick_locator)
+            # ax.xaxis.set_major_formatter(xtick_formatter)
+            # ax.xaxis.set_minor_locator(hours)
+            # date_start = self.start_dateTime
+            # date_end = (self.start_dateTime + timedelta(hours=self.windowDuration))
+            # ax.set_xlim(date_start, date_end)
+            # fig.autofmt_xdate()
+        
+        # Need to convert to unix time for 3d plotting, since matplotlib tries
+        # to autoscale_xyz, which doesn't work on non float types
+        tstamps = [dtime.timestamp() for dtime in dateTimeVector]
+        T, L = np.meshgrid(tstamps, nozzleLiftVector)
+
+        CS = ax.plot_surface(T, L, distances, label='Landing sites'+appendLabel, **kwargs)
+
+        if bestProfile:
+            ax.plot([bestProfile.launchDateTime.timestamp()], [self.bestProfile.X[1]],
+                [bestProfile.distanceFromTarget], bestMarker, markersize=8,
+                label='min' + appendLabel)
+
+        # Manually set up x ticks, since 
+        # ax.set_xticks()
+
+        # Add a color bar which maps values to colors.
+        fig.colorbar(CS, shrink=0.5, aspect=5)
+
+        fig.show()
+        # legend = ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=2)
+        # ax.clabel(CS, inline=1, fontsize=12, fmt='%.1f')
+        return fig, ax
+
+    def plotLandingSiteDistances(self, fig=None, ax=None, marker='bx',
+        bestMarker='b*', appendLabel='', bestProfile=None, **kwargs):
         """Plots the ground distance of the landing sites contained in
         self.results from the target landing site.
 
@@ -617,8 +859,11 @@ class targetFlight(flight):
         dts, nozzleLifts = zip(*self.Xs)
         dateTimes = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
         ax.plot(dateTimes, nozzleLifts, marker, label='Landing sites'+appendLabel)
-        ax.plot(self.bestProfile.launchDateTime, self.bestProfile.X[1], bestMarker, markersize=8, label='min' + appendLabel)
+
+        if bestProfile:
+            ax.plot(bestProfile.launchDateTime, bestProfile.X[1], bestMarker,
+                markersize=8, label='min' + appendLabel)
 
         fig.show()
-        legend = ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=2)
+        legend = ax.legend(loc='upper right', ncol=2)
         return fig, ax
