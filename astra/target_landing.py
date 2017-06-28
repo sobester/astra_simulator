@@ -2,9 +2,11 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-06-27 15:31:11
+# @Last Modified time: 2017-06-28 15:03:25
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
+from .available_balloons_parachutes import balloons
+
 from datetime import datetime, timedelta
 import logging
 import operator
@@ -319,8 +321,8 @@ class targetFlight(flight):
 
         return objective
 
-    def targetDistance(self, t, nozzleLift, floatingFlight, floatingAltitude,
-        floatDuration, cutdown, cutdownAltitude):
+    def targetDistance(self, t, targetAscentRate, floatingFlight, floatingAltitude,
+        floatDuration, cutdown, cutdownAltitude, balloonNominalBurstDia):
         """
         Parameters
         ----------
@@ -341,6 +343,23 @@ class targetFlight(flight):
         self.cutdown = cutdown
         self.cutdownAltitude = cutdownAltitude
         self.floatDuration = floatDuration
+
+        # Find the balloon model with nearest burst diameter to that of the
+        # input
+        if balloonNominalBurstDia:
+            self.balloonModel = min(balloons, key=lambda k: abs(balloons.get(k)[1]-balloonNominalBurstDia))
+
+        # Convert ascent rate to nozzle lift for the nearest balloon model
+        # giving the input burst diameter
+        nozzleLift = nozzleLiftFixedAscent(targetAscentRate,
+                self._balloonWeight, self.payloadTrainWeight,
+                self.environment.inflationTemperature,
+                self.environment.getPressure(self.launchSiteLat,
+                                                  self.launchSiteLon,
+                                                  self.launchSiteElev,
+                                                  self.start_dateTime),
+                self._gasMolecularMass, self.excessPressureCoeff,
+                CD=(0.225 + 0.425)/2.)
 
         log_msg = "Running flight for datetime {}, nozzleLift={}kg".format(
                         self.start_dateTime + timedelta(hours=t), nozzleLift)
@@ -389,6 +408,15 @@ class targetFlight(flight):
         return dist
 
     def _callbackStoreResult(self, xk, convergence):
+        xk[1] = nozzleLiftFixedAscent(xk[1],
+                self._balloonWeight, self.payloadTrainWeight,
+                self.environment.inflationTemperature,
+                self.environment.getPressure(self.launchSiteLat,
+                                                  self.launchSiteLon,
+                                                  self.launchSiteElev,
+                                                  self.start_dateTime),
+                self._gasMolecularMass, self.excessPressureCoeff,
+                CD=(0.225 + 0.425)/2.)
         self.Xs.append(xk)
 
     def bruteForce(self, Nx, Ny):
@@ -409,16 +437,11 @@ class targetFlight(flight):
         for launchSiteForecast in self.launchSiteForecasts:
             self.environment = launchSiteForecast
             # Estimated maximum bound of nozzle lift for target ascent rates
-            self.nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
-                self._balloonWeight, self.payloadTrainWeight,
-                self.environment.inflationTemperature,
-                self.environment.getPressure(self.launchSiteLat,
-                                                  self.launchSiteLon,
-                                                  self.launchSiteElev,
-                                                  self.start_dateTime),
-                self._gasMolecularMass, self.excessPressureCoeff,
-                CD=(0.225 + 0.425)/2.)
-            self.nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
+
+            ascentRateVec = np.linspace(self.minAscentRate, self.maxAscentRate, Ny)
+            X, Y = np.meshgrid(dts, ascentRateVec)
+
+            nozzleLiftVec = np.array([nozzleLiftFixedAscent(ascRate,
                     self._balloonWeight, self.payloadTrainWeight,
                     self.environment.inflationTemperature,
                     self.environment.getPressure(self.launchSiteLat,
@@ -426,24 +449,21 @@ class targetFlight(flight):
                                                       self.launchSiteElev,
                                                       self.start_dateTime),
                     self._gasMolecularMass, self.excessPressureCoeff,
-                    CD=(0.225 + 0.425)/2.)
-
-
-            nozzleLiftVec = np.linspace(self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny)
-            X, Y = np.meshgrid(dts, nozzleLiftVec)
+                    CD=(0.225 + 0.425)/2.) for ascRate in ascentRateVec])
 
             logger.info("Date range: [{}, {}], Nx={} points".format(
                 dateTimeVec[0], dateTimeVec[-1], Nx))
             logger.info("Nozzle Lift range: [{}, {}] (kg), Ny={} points".format(
-                self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny))
+                nozzleLiftVec[0], nozzleLiftVec[-1], Ny))
 
             logger.debug("Running brute force calculation")
             for i, t in enumerate(dts):
-                for j, nozzleLift in enumerate(nozzleLiftVec):
+                for j, ascRate in enumerate(ascentRateVec):
                     # brute force approach
-                    distance = self.targetDistance(t, nozzleLift,
+                    distance = self.targetDistance(t=t, ascentRate=ascRate,
                         floatingFlight=False, floatingAltitude=np.inf,
-                        cutdown=False, cutdownAltitude=np.inf)
+                        cutdown=False, cutdownAltitude=np.inf, floatDuration=np.inf,
+                        balloonNominalBurstDia=balloons[self.balloonModel][1])
                     # distance_lift_vec[k] = distance
                     distances[i, j] = distance
 
@@ -492,13 +512,15 @@ class targetFlight(flight):
         if sliceParam == 'floatingAltitude':
             sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
             constantsDict = {'floatingFlight': True, 'cutdown': False,
-                'cutdownAltitude':np.inf, 'floatDuration': np.inf}
+                'cutdownAltitude':np.inf, 'floatDuration': np.inf, 
+                'balloonNominalBurstDia': balloons[self.balloonModel][1]}
 
         elif sliceParam == 'cutdownAltitude':
             cutdownFlight = True
             sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
             constantsDict = {'cutdown': True, 'floatingFlight': False,
-                'floatingAltitude':0, 'floatDuration': np.inf}
+                'floatingAltitude':0, 'floatDuration': np.inf,
+                'balloonNominalBurstDia': balloons[self.balloonModel][1]}
 
         elif sliceParam == '':
             # Just do the 2D case:
@@ -531,10 +553,19 @@ class targetFlight(flight):
                     self._gasMolecularMass, self.excessPressureCoeff,
                     CD=(0.225 + 0.425)/2.)
 
+            ascentRateVec = np.linspace(self.minAscentRate, self.maxAscentRate, Ny)
 
-            nozzleLiftVec = np.linspace(self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny)
+            nozzleLiftVec = np.array([nozzleLiftFixedAscent(ascRate,
+                    self._balloonWeight, self.payloadTrainWeight,
+                    self.environment.inflationTemperature,
+                    self.environment.getPressure(self.launchSiteLat,
+                                                      self.launchSiteLon,
+                                                      self.launchSiteElev,
+                                                      self.start_dateTime),
+                    self._gasMolecularMass, self.excessPressureCoeff,
+                    CD=(0.225 + 0.425)/2.) for ascRate in ascentRateVec])
 
-            X, Y, Z = np.meshgrid(dts, nozzleLiftVec, sliceVec, indexing="ij")
+            X, Y, Z = np.meshgrid(dts, ascentRateVec, sliceVec, indexing="ij")
 
             sliceUnits = {'floatingAltitude': 'm', 'cutdownAltitude': 'm'}
 
@@ -559,8 +590,8 @@ class targetFlight(flight):
         return bestProfile, dateTimeVec, nozzleLiftVec, sliceVec, distances
 
     def optimizeTargetLandingSite(self, useFloating=False, useCutdown=False,
-        floatingAltitudeBounds=(), cutdownAltitudeBounds=(),
-        method='Nelder-Mead', maxsize=10, **kwargs):
+        flexibleBalloon=False, floatingAltitudeBounds=(),
+        cutdownAltitudeBounds=(), balloonModels=[], method='Nelder-Mead', maxsize=10, **kwargs):
         """
         Parameters
         ----------
@@ -590,7 +621,7 @@ class targetFlight(flight):
  
         # Build the dictionary of constants that the objective function will
         # ignore:
-        constantsDict = {}#{'appendResult': False}
+        constantsDict = {}
         if not useFloating:
             constantsDict['floatingFlight'] = False
             constantsDict['floatingAltitude'] = np.inf
@@ -600,6 +631,9 @@ class targetFlight(flight):
             constantsDict['cutdown'] = False
             constantsDict['cutdownAltitude'] = np.inf
             constantsDict['floatDuration'] = np.inf
+
+        if not flexibleBalloon:
+            constantsDict['balloonNominalBurstDia'] = balloons[self.balloonModel][1]
 
         objective = self.targetDistanceFactory(constantsDict)
 
@@ -631,7 +665,7 @@ class targetFlight(flight):
         # objective function
         boundsDict = {}
         boundsDict['t'] = (0, self.windowDuration)
-        boundsDict['nozzleLift'] = (nozzleLiftLowerBound, nozzleLiftUpperBound)
+        boundsDict['targetAscentRate'] = (1.5, 6.0)
         boundsDict['floatingFlight'] = (0, 1)
         boundsDict['floatingAltitude'] = floatingAltitudeBounds
         # Limit float duration to a continuous venting (0) to the entire flight
@@ -641,6 +675,13 @@ class targetFlight(flight):
         # Cutdown parameter bounds
         boundsDict['cutdown'] = (0, 1)
         boundsDict['cutdownAltitude'] = cutdownAltitudeBounds
+
+        # Variable balloon parameter bounds:
+        balloonsSelected = {k: balloons[k] for k in balloonModels}
+        boundsDict['balloonNominalBurstDia'] = (
+            min(balloonsSelected, key=lambda k: balloonsSelected.get(k)[1]),
+            max(balloonsSelected, key=lambda k: balloonsSelected.get(k)[1])
+        )
 
         # self.variables was updated by self.targetDistanceFactory, and includes
         # the name of all variables that will be used for optimisation, in order
@@ -751,7 +792,7 @@ class targetFlight(flight):
         if not ax:
             ax = fig.add_subplot(111)
             ax.set_xlabel('Date and Time')
-            ax.set_ylabel('Nozzle Lift')
+            ax.set_ylabel('Nozzle Lift (kg)')
             xtick_locator = mdates.AutoDateLocator()
             xtick_formatter = mdates.AutoDateFormatter(xtick_locator)
             ax.xaxis.set_major_locator(xtick_locator)
@@ -794,7 +835,7 @@ class targetFlight(flight):
         if not ax:
             ax = fig.add_subplot(111, projection='3d')
             ax.set_xlabel('Date and Time')
-            ax.set_ylabel('Nozzle Lift')
+            ax.set_ylabel('Nozzle Lift (kg)')
             ax.set_zlabel('Distance (km)')
             # xtick_locator = mdates.AutoDateLocator()
             # xtick_formatter = mdates.AutoDateFormatter(xtick_locator)
@@ -842,7 +883,7 @@ class targetFlight(flight):
         if not ax:
             ax = fig.add_subplot(111)
             ax.set_xlabel('Date and Time')
-            ax.set_ylabel('Nozzle Lift')
+            ax.set_ylabel('Nozzle Lift (kg)')
             xtick_locator = mdates.AutoDateLocator()
             xtick_formatter = mdates.AutoDateFormatter(xtick_locator)
             ax.xaxis.set_major_locator(xtick_locator)

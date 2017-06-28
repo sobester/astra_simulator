@@ -482,6 +482,8 @@ class flight(object):
         self._weibull_lambda = balloon_params[2]
         self._weibull_k = balloon_params[3]
 
+        self._balloonModel = new_balloonModel
+
         logger.debug("""Balloon performance: Mean burst diameter: %.4f,
             Lambda: %.4f, k: %4f""" % (
             self._meanBurstDia, self._weibull_lambda, self._weibull_k))
