@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-06-30 16:00:55
+# @Last Modified time: 2017-06-30 16:28:36
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from .available_balloons_parachutes import balloons
@@ -30,7 +30,7 @@ from deap import base
 # Create the class that will be used for assessing multi-objective fitness. By
 # default, we want to apply equal minimizing weights to all objectives, but
 # this will be overwritten by the targetFlight.optimizeTargetLanding function
-creator.create("flightFitness", base.Fitness, weights=(-1, -1))
+creator.create("flightFitness", base.Fitness, weights=(-1, -1, -1))
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class targetFlight(flight):
                  nozzleLift,
                  payloadTrainWeight,
                  inflationTemperature,
-                 weights=(-1, -1),
+                 weights=(-1, -1, -1),
                  windowDuration=24,
                  requestSimultaneous=False,
                  HD=False,
@@ -357,9 +357,9 @@ class targetFlight(flight):
         gasMassNorm = self._gasMassAtInflation / self.maxGasMass
 
         # Time related objective (could be useful for minimizing cold soak time)
-        # timeNorm = 
+        timeNorm = resultProfile.flightDurationSecs / self.maxFlightTime
 
-        fitness = self.flightFitness([distNorm, gasMassNorm])
+        fitness = self.flightFitness([distNorm, gasMassNorm, timeNorm])
         self.fitnesses.append(fitness)
         X = [t, targetAscentRate, floatingFlight, floatingAltitude,
             floatDuration, cutdown, cutdownAltitude, balloonNominalBurstDia]

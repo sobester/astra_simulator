@@ -68,6 +68,7 @@ class flightProfile(object):
         self.highestAltitude = highestAltitude
         self.hasBurst = hasBurst
         self.balloonModel = balloonModel
+        self.flightDurationSecs = self.timeVector[-1]
 
     def getJsonPath(self):
         # Every how many points should we store one (this is used to
