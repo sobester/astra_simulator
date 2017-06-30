@@ -751,7 +751,7 @@ class GFS_Handler(object):
             # the greenwich meridian.
             data_matrices[name], data_maps[name] =\
                 module._generate_matrix([dataResults])
-            logger.debug('{} data downloaded and processed.'.format(
+            logger.debug('{} data processed.'.format(
                 requestReadableName))
 
         #######################################################################

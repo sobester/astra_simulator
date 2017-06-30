@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-06-28 15:03:25
+# @Last Modified time: 2017-06-30 16:00:55
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from .available_balloons_parachutes import balloons
@@ -19,108 +19,50 @@ from copy import deepcopy
 from operator import eq
 import functools
 from . import global_tools as tools
-from .flight_tools import nozzleLiftFixedAscent
+from .flight_tools import nozzleLiftFixedAscent, liftingGasMass
 import matplotlib.dates as mdates
 import inspect
+from deap.tools import ParetoFront
+from deap import creator
+from deap import base
 
+
+# Create the class that will be used for assessing multi-objective fitness. By
+# default, we want to apply equal minimizing weights to all objectives, but
+# this will be overwritten by the targetFlight.optimizeTargetLanding function
+creator.create("flightFitness", base.Fitness, weights=(-1, -1))
 
 logger = logging.getLogger(__name__)
 
 
-class HallOfFame(object):
-    """Class copied and edited from the deap python library.
-
-    The hall of fame contains the best individual that ever lived in the
-    population during the evolution. It is lexicographically sorted at all
-    time so that the first element of the hall of fame is the individual that
-    has the best first distanceFromTarget value ever seen, according to the weights
-    provided to the distanceFromTarget at creation time.
-    
-    The insertion is made so that old individuals have priority on new
-    individuals. A single copy of each individual is kept at all time, the
-    equivalence between two individuals is made by the operator passed to the
-    *similar* argument.
-    :param maxsize: The maximum number of individual to keep in the hall of
-                    fame.
-    :param similar: An equivalence operator between two individuals, optional.
-                    It defaults to operator :func:`operator.eq`.
-    
-    The class :class:`HallOfFame` provides an interface similar to a list
-    (without being one completely). It is possible to retrieve its length, to
-    iterate on it forward and backward and to get an item or a slice from it.
-    """
-    def __init__(self, maxsize=10):
-        self.maxsize = maxsize
-        self.keys = list()
-        self.items = list()
-        # The profiles are unique to each X vector (no random element), so use
-        # a simple check if that input X vectors are equal to check similarity
-        self.similar = lambda prof1, prof2: True if prof1.X == prof2.X else False
-    
-    def update(self, profile):
-        """Update the hall of fame with the *population* by replacing the
-        worst individuals in it by the best individuals present in
-        *population* (if they are better). The size of the hall of fame is
-        kept constant.
-        
-        :param population: A list of individual with a distanceFromTarget attribute to
-                           update the hall of fame with.
-        """
-        if len(self) == 0 and self.maxsize !=0:
-            # Working on an empty hall of fame is problematic for the
-            # "for else"
-            self.insert(profile)
-        
-        if profile.objective > self[-1].objective or len(self) < self.maxsize:
-            if not any((self.similar(profile, hofer) for hofer in self)):
-                if len(self) >= self.maxsize:
-                    self.remove(-1)
-                self.insert(profile)
-    
-    def insert(self, item):
-        """Insert a new individual in the hall of fame using the
-        :func:`~bisect.bisect_right` function. The inserted individual is
-        inserted on the right side of an equal individual. Inserting a new 
-        individual in the hall of fame also preserve the hall of fame's order.
-        This method **does not** check for the size of the hall of fame, in a
-        way that inserting a new individual in a full hall of fame will not
-        remove the worst individual to maintain a constant size.
-        
-        :param item: The individual with a distanceFromTarget attribute to insert in the
-                     hall of fame.
-        """
-        item = deepcopy(item)
-        i = bisect_right(self.keys, item.objective)
-        self.items.insert(len(self) - i, item)
-        self.keys.insert(i, item.objective)
-    
-    def remove(self, index):
-        """Remove the specified *index* from the hall of fame.
-        
-        :param index: An integer giving which item to remove.
-        """
-        del self.keys[len(self) - (index % len(self) + 1)]
-        del self.items[index]
-    
-    def clear(self):
-        """Clear the hall of fame."""
-        del self.items[:]
-        del self.keys[:]
-
-    def __len__(self):
-        return len(self.items)
-
-    def __getitem__(self, i):
-        return self.items[i]
-
-    def __iter__(self):
-        return iter(self.items)
-
-    def __reversed__(self):
-        return reversed(self.items)
-    
-    def __str__(self):
-        return str(self.items)
+class targetProfile(flightProfile):
+    def __init__(self, launchDateTime,
+                 nozzleLift,
+                 flightNumber,
+                 timeVector,
+                 latitudeProfile,
+                 longitudeProfile,
+                 altitudeProfile,
+                 highestAltIndex,
+                 highestAltitude,
+                 hasBurst,
+                 balloonModel,
+                 fitness,
+                 X
+                 ):
+        super(targetProfile, self).__init__(launchDateTime=launchDateTime,
+            nozzleLift=nozzleLift,
+            flightNumber=flightNumber,
+            timeVector=timeVector,
+            latitudeProfile=latitudeProfile,
+            longitudeProfile=longitudeProfile,
+            altitudeProfile=altitudeProfile,
+            highestAltIndex=highestAltIndex,
+            highestAltitude=highestAltitude,
+            hasBurst=hasBurst,
+            balloonModel=balloonModel)
+        self.fitness = fitness
+        self.X = X
 
 
 class targetFlight(flight):
@@ -143,8 +85,9 @@ class targetFlight(flight):
     windowDuration : int
         The duration for which to download weather data (in hours). Flights
         will be sampled within this range.
-    N_Pareto : int
-        The number of 
+    weights : tuple of signed int
+        The weights for each of the objectives assessed by the targetDistance
+        function. 
 
     See Also
     --------
@@ -162,7 +105,7 @@ class targetFlight(flight):
                  nozzleLift,
                  payloadTrainWeight,
                  inflationTemperature,
-                 N_Pareto=10,
+                 weights=(-1, -1),
                  windowDuration=24,
                  requestSimultaneous=False,
                  HD=False,
@@ -178,16 +121,6 @@ class targetFlight(flight):
                  log_to_file=False,
                  progress_to_file=False,
                  launchSiteForecasts=[]):
-        self.targetLat = targetLat
-        self.targetLon = targetLon
-        self.targetElev = targetElev
-        self.start_dateTime = start_dateTime
-        self.windowDuration = windowDuration
-        self.launchSites = launchSites
-
-        self.end_dateTime = self.start_dateTime + timedelta(hours=windowDuration)
-        self.bestProfile = None
-        self.launchSiteForecasts = []
 
         super(targetFlight, self).__init__(environment=None,
                                 balloonGasType=balloonGasType,
@@ -204,6 +137,18 @@ class targetFlight(flight):
                                 debugging=False,
                                 log_to_file=False,
                                 progress_to_file=False)
+
+        self.targetLat = targetLat
+        self.targetLon = targetLon
+        self.targetElev = targetElev
+        self.start_dateTime = start_dateTime
+        self.windowDuration = windowDuration
+        self.launchSites = launchSites
+
+        self.end_dateTime = self.start_dateTime + timedelta(hours=windowDuration)
+        self.bestProfile = None
+        self.launchSiteForecasts = []
+        self.balloonsSelected = [balloonModel]
 
         # Use a maximum lateral upper atmospheric speed to determine if this
         # flight is feasible, given an 'as the crow flies' flight entirely in
@@ -234,39 +179,6 @@ class targetFlight(flight):
                         site[0], site[1]))
                     # Need to log progress to file for the web interface here
 
-        # Module level loggers seem to cause issues for derived classes spread
-        # accross modules: trying to fix this here
-        if debugging:
-            log_lev = logging.DEBUG
-        else:
-            log_lev = logging.WARNING
-
-        if log_to_file:
-            # Reset the app logger handlers and reset basic config
-            # file handler (this may not be the best way to do this for all
-            # situations, but it should allow decent logging on the web app
-            # while not interrupting with general use of astra as a standalone
-            # library
-            for handler in logging.root.handlers[:]:
-                logging.root.removeHandler(handler)
-
-            # Set a maximum log file size of 5MB:
-            handler = logging.handlers.RotatingFileHandler('astra_py_error.log',
-                mode='a',
-                maxBytes=10*1024*1024)
-            formatter = logging.Formatter('%(asctime)s.%(msecs)d %(levelname)s:%(name)s %(message)s')
-            handler.setFormatter(formatter)
-
-            stream = logging.StreamHandler()
-            stream.setFormatter(formatter)
-
-            logging.basicConfig(handlers=[handler, stream], level=log_lev)
-
-            # rootlogger.addHandler(handler)
-            # rootlogger.setLevel(log_lev)
-        else:
-            logger.setLevel(log_lev)
-
         # Set some max a min bounds on ascent rate
         self.minAscentRate = 1.5
         self.maxAscentRate = 6
@@ -274,6 +186,45 @@ class targetFlight(flight):
         # Define a list of input vectors Xs (to the target distance function),
         # and a list of objective scores Ys for plotting later:
         self.Xs = []
+
+        self.flightFitness = deepcopy(creator.flightFitness)
+
+        # This will update the weights used by creator.flightFitness, and hence
+        # the order of the individuals added to the ParetoFront by the
+        # targetDistance function.
+        self.weights = weights
+
+    @property
+    def weights(self):
+        return self._weights
+
+    @weights.setter
+    def weights(self, newWeights):
+        """Takes a tuple of weights, corresponding to the multiobjective
+        values of fitness evaluated for each flight profile.
+
+        Parameters
+        ----------
+        newWeights : tuple
+            Weightings used to multiply values in the objective function
+            newWeights[0] : normalised distance from target
+        """
+        self.flightFitness.weights = newWeights
+        self._weights = newWeights
+
+    @property
+    def balloonsSelected(self):
+        return self._balloonsSelected
+
+    @balloonsSelected.setter
+    def balloonsSelected(self, newBalloonModels):
+        """Takes an input list of selected balloon models, and stores it as an
+        attribute. Also updates the self.largestBalloon, which is used to
+        normalise the cost (gas mass) objective.
+        """
+        self._balloonsSelected = {k: balloons[k] for k in newBalloonModels}
+        self.largestBalloon = max(self._balloonsSelected,
+            key=lambda k: abs(self._balloonsSelected.get(k)[1]))
 
     def targetDistanceFactory(self, constantsDict):
         """Constructs a N dimensional objective function, where N is the number
@@ -347,7 +298,8 @@ class targetFlight(flight):
         # Find the balloon model with nearest burst diameter to that of the
         # input
         if balloonNominalBurstDia:
-            self.balloonModel = min(balloons, key=lambda k: abs(balloons.get(k)[1]-balloonNominalBurstDia))
+            self.balloonModel = min(self.balloonsSelected,
+                key=lambda k: abs(self.balloonsSelected.get(k)[1]-balloonNominalBurstDia))
 
         # Convert ascent rate to nozzle lift for the nearest balloon model
         # giving the input burst diameter
@@ -361,14 +313,13 @@ class targetFlight(flight):
                 self._gasMolecularMass, self.excessPressureCoeff,
                 CD=(0.225 + 0.425)/2.)
 
-        log_msg = "Running flight for datetime {}, nozzleLift={}kg".format(
-                        self.start_dateTime + timedelta(hours=t), nozzleLift)
+        log_msg = "Running flight for datetime {}, nozzleLift={}kg, balloon {}".format(
+                        self.start_dateTime + timedelta(hours=t), nozzleLift, self.balloonModel)
 
         if floatingFlight:
             log_msg += ", Floating Altitude {}m".format(floatingAltitude)
         if cutdown:
             log_msg += ", cutdown Altitude {}m".format(cutdownAltitude)
-
 
         logger.debug(log_msg)
 
@@ -388,24 +339,36 @@ class targetFlight(flight):
         if not resultProfile.hasBurst:
             return 5e6
         
+        # Distance objective (normalised)
         landing_lat = resultProfile.latitudeProfile[-1]
         landing_lon = resultProfile.longitudeProfile[-1]
-        dist = tools.haversine(landing_lat, landing_lon, self.targetLat, self.targetLon)
+        distNorm = (tools.haversine(landing_lat, landing_lon, self.targetLat, self.targetLon) /
+            self.cutoffDistance)
 
-        # Storing attributes on the fly is bad from a software engineering
-        # standpoint, but it works:
-        resultProfile.X = [t, nozzleLift, floatingFlight, floatingAltitude,
-        cutdown, cutdownAltitude]
-        resultProfile.distanceFromTarget = dist
+        # Cost related objective (currently evaluates the gas mass required to
+        # achieve the nozzle lift used for this profile, normalised by the max
+        # )
+        if self.balloonsSelected:
+            balloonsSelected = self.balloonsSelected
+        else:
+            # Just use the full dict from available_balloons_parachutes.py
+            balloonsSelected = balloons
 
-        # Store normalised objective (negative) as this is a minimization. Used
-        # in the hall of fame production and sorting.
-        resultProfile.objective = - dist
+        gasMassNorm = self._gasMassAtInflation / self.maxGasMass
 
-        # Use the hall of fame to store this profile
-        self.results.update(resultProfile)
+        # Time related objective (could be useful for minimizing cold soak time)
+        # timeNorm = 
 
-        return dist
+        fitness = self.flightFitness([distNorm, gasMassNorm])
+        self.fitnesses.append(fitness)
+        X = [t, targetAscentRate, floatingFlight, floatingAltitude,
+            floatDuration, cutdown, cutdownAltitude, balloonNominalBurstDia]
+        resultProfile = targetProfile.fromProfile(resultProfile, fitness=fitness, X=X)
+
+        # Use the ParetoFront update method to store this profile lexographically
+        self.results.update([resultProfile])
+
+        return - sum(fitness.wvalues)
 
     def _callbackStoreResult(self, xk, convergence):
         xk[1] = nozzleLiftFixedAscent(xk[1],
@@ -424,13 +387,13 @@ class targetFlight(flight):
         distance landscape
         Currently only considers time
         """
-        # Keep all paths for now, to visualize the landscape of nozzle lift
-        self.results = HallOfFame(maxsize=Nx * Ny)
+        # Set up the arrays where results will be stored. Also storing the 
+        # multiple objectives 
+        self.results = ParetoFront()
+        scores = np.zeros([Nx, Ny])
+        self.fitnesses = []
 
         dts = np.linspace(0, self.windowDuration, Nx)
-
-        distances = np.zeros([Nx, Ny])
-
         dateTimeVec = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
 
 
@@ -451,6 +414,16 @@ class targetFlight(flight):
                     self._gasMolecularMass, self.excessPressureCoeff,
                     CD=(0.225 + 0.425)/2.) for ascRate in ascentRateVec])
 
+            # Get the maximum gas mass expected, for normalising the cost
+            # (gas mass) objective. ISA pressure is used, since the difference
+            # in max pressure vs isa pressure over this time window should not
+            # have a great effect on the maximum estimated gas mass
+            self.maxGasMass = liftingGasMass(nozzleLiftVec[-1],
+                balloons[self.largestBalloon][0], self.environment.inflationTemperature,
+                1013.25,
+                self._gasMolecularMass,
+                self.excessPressureCoeff)[0]
+
             logger.info("Date range: [{}, {}], Nx={} points".format(
                 dateTimeVec[0], dateTimeVec[-1], Nx))
             logger.info("Nozzle Lift range: [{}, {}] (kg), Ny={} points".format(
@@ -460,16 +433,16 @@ class targetFlight(flight):
             for i, t in enumerate(dts):
                 for j, ascRate in enumerate(ascentRateVec):
                     # brute force approach
-                    distance = self.targetDistance(t=t, ascentRate=ascRate,
+                    objective = self.targetDistance(t=t, targetAscentRate=ascRate,
                         floatingFlight=False, floatingAltitude=np.inf,
                         cutdown=False, cutdownAltitude=np.inf, floatDuration=np.inf,
                         balloonNominalBurstDia=balloons[self.balloonModel][1])
                     # distance_lift_vec[k] = distance
-                    distances[i, j] = distance
+                    scores[i, j] = objective
 
-        bestProfile = self.results[0]
+        bestProfile = max(self.results, key=lambda prof: sum(prof.fitness.wvalues))
         self.bestProfile = bestProfile
-        return bestProfile, dateTimeVec, nozzleLiftVec, distances
+        return bestProfile, dateTimeVec, nozzleLiftVec, scores
 
     def bruteForceSlice(self, Nx=21, Ny=21, sliceParam='', Nslices=None, sliceBounds=()):
         """Runs a brute force (discrete grid) of the targetDistance objective
@@ -496,7 +469,7 @@ class targetFlight(flight):
         """
 
         # Keep all paths for now, to visualize the landscape of nozzle lift
-        self.results = HallOfFame(maxsize=Nx * Ny)
+        self.results = ParetoFront()
 
         dts = np.linspace(0, self.windowDuration, Nx)
 
@@ -565,6 +538,17 @@ class targetFlight(flight):
                     self._gasMolecularMass, self.excessPressureCoeff,
                     CD=(0.225 + 0.425)/2.) for ascRate in ascentRateVec])
 
+
+            # Get the maximum gas mass expected, for normalising the cost
+            # (gas mass) objective. ISA pressure is used, since the difference
+            # in max pressure vs isa pressure over this time window should not
+            # have a great effect on the maximum estimated gas mass
+            self.maxGasMass = liftingGasMass(nozzleLiftVec[-1],
+                balloons[self.largestBalloon][0], self.environment.inflationTemperature,
+                1013.25,
+                self._gasMolecularMass,
+                self.excessPressureCoeff)[0]
+
             X, Y, Z = np.meshgrid(dts, ascentRateVec, sliceVec, indexing="ij")
 
             sliceUnits = {'floatingAltitude': 'm', 'cutdownAltitude': 'm'}
@@ -585,13 +569,14 @@ class targetFlight(flight):
 
             distances = np.reshape(objectiveVals, (np.size(dts), np.size(nozzleLiftVec), np.size(sliceVec)))
 
-        bestProfile = self.results[0]
+        bestProfile = max(self.results, key=lambda prof: sum(prof.fitness.wvalues))
         self.bestProfile = bestProfile
         return bestProfile, dateTimeVec, nozzleLiftVec, sliceVec, distances
 
     def optimizeTargetLandingSite(self, useFloating=False, useCutdown=False,
         flexibleBalloon=False, floatingAltitudeBounds=(),
-        cutdownAltitudeBounds=(), balloonModels=[], method='Nelder-Mead', maxsize=10, **kwargs):
+        cutdownAltitudeBounds=(), balloonModels=[], method='Nelder-Mead',
+        maxsize=10, weights=(), **kwargs):
         """
         Parameters
         ----------
@@ -609,6 +594,11 @@ class targetFlight(flight):
             The number of (lexographically sorted by distance from target site)
             profiles to keep in self.results
 
+        [weights] : tuple of int
+            if provided, the value of self.weights will be overridden, changing
+            the weightings used in the objective function and Pareto Front
+            ordering. See self.weights.
+
         **kwargs - extra args to pass to scipy
         """
         # run the simulation every hour over the time window. Note that we need
@@ -616,8 +606,11 @@ class targetFlight(flight):
         # starting at the end of the window.
         # scipy.optimize.fmin_ 
 
-        self.results = HallOfFame(maxsize=10)
+        self.results = ParetoFront()
         self.Xs = []
+
+        if weights:
+            self.weights = weights
  
         # Build the dictionary of constants that the objective function will
         # ignore:
@@ -660,7 +653,7 @@ class targetFlight(flight):
                 self._gasMolecularMass, self.excessPressureCoeff,
                 CD=(0.225 + 0.425)/2.)
 
-                # Set up the dictionary of bounds on all variables: note that some may
+        # Set up the dictionary of bounds on all variables: note that some may
         # not be passed to scipy, as this depends on the constants used in the
         # objective function
         boundsDict = {}
@@ -677,11 +670,20 @@ class targetFlight(flight):
         boundsDict['cutdownAltitude'] = cutdownAltitudeBounds
 
         # Variable balloon parameter bounds:
-        balloonsSelected = {k: balloons[k] for k in balloonModels}
-        boundsDict['balloonNominalBurstDia'] = (
-            min(balloonsSelected, key=lambda k: balloonsSelected.get(k)[1]),
-            max(balloonsSelected, key=lambda k: balloonsSelected.get(k)[1])
-        )
+        if balloonModels:
+            self.balloonsSelected = balloonModels
+        else:
+            self.balloonsSelected = [self.balloonModel]
+        balloonRads = [bal[1] for bal in self.balloonsSelected.values()]
+        boundsDict['balloonNominalBurstDia'] = (min(balloonRads), max(balloonRads))
+
+        # Get the maximum gas mass expected, for normalising the cost
+        # (gas mass) objective. ISA pressure is used, since the difference
+        # in max pressure vs isa pressure over this time window should not
+        # have a great effect on the maximum estimated gas mass
+        self.maxGasMass = liftingGasMass(nozzleLiftUpperBound,
+            balloons[self.largestBalloon][0], self.environment.inflationTemperature,
+            1013.25, self._gasMolecularMass, self.excessPressureCoeff)[0]
 
         # self.variables was updated by self.targetDistanceFactory, and includes
         # the name of all variables that will be used for optimisation, in order
@@ -773,7 +775,7 @@ class targetFlight(flight):
         fig.show()
         return fig, ax
 
-    def plotLandingSiteDistanceContours(self, dateTimeVector, nozzleLiftVector, distances,
+    def plotObjectiveContours(self, dateTimeVector, nozzleLiftVector, scores,
         fig=None, ax=None, bestMarker='b*', appendLabel='', bestProfile=None,  **kwargs):
         """Plots the ground distance of the landing sites contained in
         self.results from the target landing site.
@@ -806,17 +808,17 @@ class targetFlight(flight):
             ax.set_position([box.x0, box.y0,
                              box.width, box.height * 0.9])
             
-        CS = ax.contour(dateTimeVector, nozzleLiftVector, distances, label='Landing sites'+appendLabel, **kwargs)
+        CS = ax.contour(dateTimeVector, nozzleLiftVector, scores, label='Landing sites'+appendLabel, **kwargs)
 
         if bestProfile:
-            ax.plot(bestProfile.launchDateTime, bestProfile.X[1], bestMarker, markersize=8, label='min' + appendLabel)
+            ax.plot(bestProfile.launchDateTime, bestProfile.nozzleLift, bestMarker, markersize=8, label='min' + appendLabel)
             legend = ax.legend(loc='upper right', ncol=2)
 
         fig.show()
-        ax.clabel(CS, inline=1, fontsize=12, fmt='%.1f')
+        ax.clabel(CS, inline=1, fontsize=12, fmt='%.2f')
         return fig, ax
 
-    def plotLandingSiteDistanceContours3D(self, dateTimeVector, nozzleLiftVector, distances,
+    def plotObjectiveContours3D(self, dateTimeVector, nozzleLiftVector, distances,
         fig=None, ax=None, bestMarker='b*', appendLabel='', bestProfile=None, **kwargs):
         """Plots the ground distance of the landing sites contained in
         self.results from the target landing site.
@@ -836,7 +838,7 @@ class targetFlight(flight):
             ax = fig.add_subplot(111, projection='3d')
             ax.set_xlabel('Date and Time')
             ax.set_ylabel('Nozzle Lift (kg)')
-            ax.set_zlabel('Distance (km)')
+            ax.set_zlabel('Objective Score')
             # xtick_locator = mdates.AutoDateLocator()
             # xtick_formatter = mdates.AutoDateFormatter(xtick_locator)
             # ax.xaxis.set_major_locator(xtick_locator)
@@ -855,8 +857,8 @@ class targetFlight(flight):
         CS = ax.plot_surface(T, L, distances, label='Landing sites'+appendLabel, **kwargs)
 
         if bestProfile:
-            ax.plot([bestProfile.launchDateTime.timestamp()], [self.bestProfile.X[1]],
-                [bestProfile.distanceFromTarget], bestMarker, markersize=8,
+            ax.plot([bestProfile.launchDateTime.timestamp()], [self.bestProfile.nozzleLift],
+                [-sum(bestProfile.fitness.wvalues)], bestMarker, markersize=8,
                 label='min' + appendLabel)
 
         # Manually set up x ticks, since 
@@ -867,10 +869,9 @@ class targetFlight(flight):
 
         fig.show()
         # legend = ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=2)
-        # ax.clabel(CS, inline=1, fontsize=12, fmt='%.1f')
         return fig, ax
 
-    def plotLandingSiteDistances(self, fig=None, ax=None, marker='bx',
+    def plotObjectiveLocations(self, fig=None, ax=None, marker='bx',
         bestMarker='b*', appendLabel='', bestProfile=None, **kwargs):
         """Plots the ground distance of the landing sites contained in
         self.results from the target landing site.

@@ -55,7 +55,8 @@ class flightProfile(object):
                  altitudeProfile,
                  highestAltIndex,
                  highestAltitude,
-                 hasBurst):
+                 hasBurst,
+                 balloonModel):
         self.launchDateTime = launchDateTime
         self.nozzleLift = nozzleLift
         self.flightNumber = flightNumber
@@ -66,6 +67,7 @@ class flightProfile(object):
         self.highestAltIndex = highestAltIndex
         self.highestAltitude = highestAltitude
         self.hasBurst = hasBurst
+        self.balloonModel = balloonModel
 
     def getJsonPath(self):
         # Every how many points should we store one (this is used to
@@ -201,6 +203,22 @@ class flightProfile(object):
                         self.highestAltitude))
 
         return jsonBurstMarkers, jsonFloatMarkers, jsonLandingMarkers
+
+    @classmethod
+    def fromProfile(cls, profile, *args, **kwargs):
+        return cls(launchDateTime=profile.launchDateTime,
+            nozzleLift=profile.nozzleLift,
+            flightNumber=profile.flightNumber,
+            timeVector=profile.timeVector,
+            latitudeProfile=profile.latitudeProfile,
+            longitudeProfile=profile.longitudeProfile,
+            altitudeProfile=profile.altitudeProfile,
+            highestAltIndex=profile.highestAltIndex,
+            highestAltitude=profile.highestAltitude,
+            hasBurst=profile.hasBurst,
+            balloonModel=profile.balloonModel,
+            *args, **kwargs)
+
 
 class flight(object):
     """Primary Balloon flight simulation class.
@@ -371,6 +389,9 @@ class flight(object):
         self.cutdown = cutdown
         self.cutdownAltitude = cutdownAltitude
         self.cutdownTimeout = cutdownTimeout
+
+        # Set the 
+        self.profileClass = flightProfile
 
         if self.cutdownTimeout != numpy.inf:
             self.cutdown = True
@@ -1190,7 +1211,7 @@ class flight(object):
         resultProfile = flightProfile(launchDateTime, self.nozzleLift,
             flightNumber + 1, timeVector, latitudeProfile,
                   longitudeProfile, solution_altitude, index,
-                  highestAltitude, self._lastFlightBurst)
+                  highestAltitude, self._lastFlightBurst, self.balloonModel)
 
         logger.debug('Simulation completed.')
 
