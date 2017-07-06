@@ -375,11 +375,11 @@ class flight(object):
         # must be defined before nozzleLift 
         self.environment = environment                # weather object
         self.balloonGasType = balloonGasType
+        self.numberOfSimRuns = numberOfSimRuns
         self.balloonModel = balloonModel              # See available_balloons
         self.payloadTrainWeight = payloadTrainWeight  # kg
         self.nozzleLift = nozzleLift                  # kg
         self.parachuteModel = parachuteModel
-        self.numberOfSimRuns = numberOfSimRuns
         self.trainEquivSphereDiam = trainEquivSphereDiam     # m
         self.floatingFlight = floatingFlight
         self.floatingAltitude = floatingAltitude             # m
@@ -505,6 +505,9 @@ class flight(object):
         self._weibull_k = balloon_params[3]
 
         self._balloonModel = new_balloonModel
+
+        # Need to reinitialise Monte Carlo params, due to change in burst dia
+        self.initMonteCarloParams(self._numberOfSimRuns)
 
         logger.debug("""Balloon performance: Mean burst diameter: %.4f,
             Lambda: %.4f, k: %4f""" % (

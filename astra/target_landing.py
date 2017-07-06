@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-06-30 16:28:36
+# @Last Modified time: 2017-07-06 13:11:48
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from .available_balloons_parachutes import balloons
@@ -25,7 +25,8 @@ import inspect
 from deap.tools import ParetoFront
 from deap import creator
 from deap import base
-
+import matplotlib.ticker as ticker
+import itertools
 
 # Create the class that will be used for assessing multi-objective fitness. By
 # default, we want to apply equal minimizing weights to all objectives, but
@@ -273,7 +274,7 @@ class targetFlight(flight):
         return objective
 
     def targetDistance(self, t, targetAscentRate, floatingFlight, floatingAltitude,
-        floatDuration, cutdown, cutdownAltitude, balloonNominalBurstDia):
+        floatDuration, cutdown, cutdownAltitude, balloonNominalBurstDia, returnWeightedSum=True):
         """
         Parameters
         ----------
@@ -323,13 +324,20 @@ class targetFlight(flight):
 
         logger.debug(log_msg)
 
+        Nobjs = 3
+        fitnessArr = np.zeros(Nobjs)
+
         # nozzle lift is an access controlled variable, which may raise an error if
         # lower than the payload lift: return a penalty if this is the case
         try:
             self.nozzleLift = nozzleLift
         except ValueError:
-            # Pay a penalty larger than the maximum possible distance (Earth circumference)
-            return 5e6
+            # Pay a penalty larger than the maximum possible values
+            fitnessArr += [5e6] * Nobjs
+            if returnWeightedSum:
+                return sum(fitnessArr)
+            else:
+                return fitnessArr
 
         launchDateTime = self.start_dateTime + timedelta(hours=t)
 
@@ -337,7 +345,7 @@ class targetFlight(flight):
 
         # Penalty for flights not bursting within the time limit
         if not resultProfile.hasBurst:
-            return 5e6
+            fitnessArr += [5e6] * Nobjs
         
         # Distance objective (normalised)
         landing_lat = resultProfile.latitudeProfile[-1]
@@ -359,7 +367,8 @@ class targetFlight(flight):
         # Time related objective (could be useful for minimizing cold soak time)
         timeNorm = resultProfile.flightDurationSecs / self.maxFlightTime
 
-        fitness = self.flightFitness([distNorm, gasMassNorm, timeNorm])
+        fitnessArr += [distNorm, gasMassNorm, timeNorm]
+        fitness = self.flightFitness(fitnessArr)
         self.fitnesses.append(fitness)
         X = [t, targetAscentRate, floatingFlight, floatingAltitude,
             floatDuration, cutdown, cutdownAltitude, balloonNominalBurstDia]
@@ -368,7 +377,10 @@ class targetFlight(flight):
         # Use the ParetoFront update method to store this profile lexographically
         self.results.update([resultProfile])
 
-        return - sum(fitness.wvalues)
+        if returnWeightedSum:
+            return - sum(fitness.wvalues)
+        else:
+            return fitness.values
 
     def _callbackStoreResult(self, xk, convergence):
         xk[1] = nozzleLiftFixedAscent(xk[1],
@@ -382,7 +394,7 @@ class targetFlight(flight):
                 CD=(0.225 + 0.425)/2.)
         self.Xs.append(xk)
 
-    def bruteForce(self, Nx, Ny):
+    def bruteForce(self, Nx, Ny, balloonModel):
         """ Sample the parameter space and form a map of the landing site
         distance landscape
         Currently only considers time
@@ -396,6 +408,8 @@ class targetFlight(flight):
         dts = np.linspace(0, self.windowDuration, Nx)
         dateTimeVec = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
 
+        self.balloonModel = balloonModel
+        self.balloonsSelected = [balloonModel]
 
         for launchSiteForecast in self.launchSiteForecasts:
             self.environment = launchSiteForecast
@@ -444,7 +458,7 @@ class targetFlight(flight):
         self.bestProfile = bestProfile
         return bestProfile, dateTimeVec, nozzleLiftVec, scores
 
-    def bruteForceSlice(self, Nx=21, Ny=21, sliceParam='', Nslices=None, sliceBounds=()):
+    def bruteForceSlice(self, Nx=21, Ny=21, balloonModel=None, sliceParam='', Nslices=None, sliceBounds=()):
         """Runs a brute force (discrete grid) of the targetDistance objective
         function, using Nx
 
@@ -470,12 +484,18 @@ class targetFlight(flight):
 
         # Keep all paths for now, to visualize the landscape of nozzle lift
         self.results = ParetoFront()
+        self.fitnesses = []
+
 
         dts = np.linspace(0, self.windowDuration, Nx)
 
         distances = np.zeros(Nx)
 
         dateTimeVec = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
+
+        if balloonModel:
+            self.balloonModel = balloonModel
+            self.balloonsSelected = [balloonModel]
 
         if sliceParam:
             assert(Nslices), "Argument 'Nslices' is required to slice the landscape through {}".format(sliceParam)
@@ -607,6 +627,9 @@ class targetFlight(flight):
         # scipy.optimize.fmin_ 
 
         self.results = ParetoFront()
+        # Store all objective scores, for Pareto plotting
+        self.fitnesses = []
+
         self.Xs = []
 
         if weights:
@@ -627,6 +650,9 @@ class targetFlight(flight):
 
         if not flexibleBalloon:
             constantsDict['balloonNominalBurstDia'] = balloons[self.balloonModel][1]
+
+        # Need to return a tuple of fitness for ga, or a weighted sum for scipy:
+        constantsDict['returnWeightedSum'] = (method.lower() != 'ga')
 
         objective = self.targetDistanceFactory(constantsDict)
 
@@ -745,7 +771,7 @@ class targetFlight(flight):
         ax.legend(loc='lower left')
         ax.set_xlabel('Lat (deg)')
         ax.set_ylabel('Lon (deg)')
-        ax.set_zlabel('Alt (km)')
+        ax.set_zlabel('Alt (m)')
         fig.show()
         return fig, ax
 
@@ -818,7 +844,7 @@ class targetFlight(flight):
         ax.clabel(CS, inline=1, fontsize=12, fmt='%.2f')
         return fig, ax
 
-    def plotObjectiveContours3D(self, dateTimeVector, nozzleLiftVector, distances,
+    def plotObjectiveContours3D(self, dateTimeVector, nozzleLiftVector, scores,
         fig=None, ax=None, bestMarker='b*', appendLabel='', bestProfile=None, **kwargs):
         """Plots the ground distance of the landing sites contained in
         self.results from the target landing site.
@@ -832,6 +858,14 @@ class targetFlight(flight):
             Additional named args will be passed to ax.contour for plot
             settings
         """
+        # Find the rows that are outside the expected range, and scaled ranges
+        # of the plot
+        scores_filtered = scores[scores < 5]
+        if np.size(scores_filtered) < np.size(scores):
+            logger.warning("Some scores are poorly scaled. Plot values will be cut off at +5")
+
+        zmin, zmax = np.min(scores_filtered), np.max(scores_filtered)
+
         if not fig:
             fig = plt.figure()
         if not ax:
@@ -839,13 +873,21 @@ class targetFlight(flight):
             ax.set_xlabel('Date and Time')
             ax.set_ylabel('Nozzle Lift (kg)')
             ax.set_zlabel('Objective Score')
-            # xtick_locator = mdates.AutoDateLocator()
-            # xtick_formatter = mdates.AutoDateFormatter(xtick_locator)
-            # ax.xaxis.set_major_locator(xtick_locator)
-            # ax.xaxis.set_major_formatter(xtick_formatter)
-            # ax.xaxis.set_minor_locator(hours)
-            # date_start = self.start_dateTime
-            # date_end = (self.start_dateTime + timedelta(hours=self.windowDuration))
+
+            ax.set_zlim([zmin, zmax])
+
+            def format_date(x, pos=None):
+                return datetime.fromtimestamp(x).strftime('%m-%d %H') #use FuncFormatter to format dates
+
+            # Use 6 x ticks, and rotate them
+            xticks = [(self.start_dateTime + timedelta(hours=h)).timestamp() for h in np.linspace(0, self.windowDuration, 6)]
+            ax.w_xaxis.set_major_locator(ticker.FixedLocator(xticks))
+            ax.w_xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
+             # re-create what autofmt_xdate but with w_xaxis
+            for tl in ax.w_xaxis.get_ticklabels():
+                tl.set_ha('right')
+                tl.set_rotation(30)
+
             # ax.set_xlim(date_start, date_end)
             # fig.autofmt_xdate()
         
@@ -854,7 +896,8 @@ class targetFlight(flight):
         tstamps = [dtime.timestamp() for dtime in dateTimeVector]
         T, L = np.meshgrid(tstamps, nozzleLiftVector)
 
-        CS = ax.plot_surface(T, L, distances, label='Landing sites'+appendLabel, **kwargs)
+        CS = ax.plot_surface(T, L, scores, label='Landing sites'+appendLabel,
+            vmin=zmin, vmax=zmax, **kwargs)
 
         if bestProfile:
             ax.plot([bestProfile.launchDateTime.timestamp()], [self.bestProfile.nozzleLift],
@@ -903,8 +946,9 @@ class targetFlight(flight):
         ax.plot(dateTimes, nozzleLifts, marker, label='Landing sites'+appendLabel)
 
         if bestProfile:
-            ax.plot(bestProfile.launchDateTime, bestProfile.X[1], bestMarker,
+            ax.plot(bestProfile.launchDateTime, bestProfile.nozzleLift, bestMarker,
                 markersize=8, label='min' + appendLabel)
+
 
         fig.show()
         legend = ax.legend(loc='upper right', ncol=2)
