@@ -2,10 +2,11 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-07-06 13:11:48
+# @Last Modified time: 2017-07-06 18:12:32
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from .available_balloons_parachutes import balloons
+from .target_landing import targetProfile
 
 from datetime import datetime, timedelta
 import logging
@@ -22,11 +23,41 @@ from . import global_tools as tools
 from .flight_tools import nozzleLiftFixedAscent, liftingGasMass
 import matplotlib.dates as mdates
 import inspect
-from deap.tools import ParetoFront
+from deap import tools as dptools
 from deap import creator
 from deap import base
+from deap import algorithms
 import matplotlib.ticker as ticker
+import matplotlib.tri as mtri
 import itertools
+import random
+import functools
+
+
+# Helper functions for deap
+#############################################################################
+def interpIndividual(bounds, individual):
+    interp = []
+    for i in range(len(individual)):
+        bmin, bmax = bounds[i]
+        interp.append(bmin + (bmax-bmin) * individual[i])
+    return interp
+
+def checkBounds(bmin, bmax):
+    def decorator(func):
+        def wrappper(*args, **kargs):
+            offspring = func(*args, **kargs)
+            for child in offspring:
+                for i in range(len(child)):
+                    if child[i] > bmax:
+                        child[i] = bmax
+                    elif child[i] < bmin:
+                        child[i] = bmin
+            return offspring
+        return wrappper
+    return decorator
+#############################################################################
+
 
 # Create the class that will be used for assessing multi-objective fitness. By
 # default, we want to apply equal minimizing weights to all objectives, but
@@ -157,6 +188,11 @@ class targetFlight(flight):
         self.maxLateralSpeed = 200    # m/s 
         self.cutoffDistance = self.maxLateralSpeed * self.maxFlightTime / 3600.
 
+        # Set some allowable modes of flight (these are used by the 
+        # targetDistance function)
+        self.flightModes = ['standard', 'cutdown', 'floating']
+
+
         # This section could be made faster if launch sites are clustered into
         # single forecasts (and therefore, less download requests)
         if launchSiteForecasts:
@@ -256,25 +292,116 @@ class targetFlight(flight):
             X_kwargs = dict(zip(remaining_args, X))
             kwargs = {**constantsDict, **X_kwargs}
 
-            # Check that Floating flight is within the bounds of zero and one,
-            # then round to give True/False(Note: this doesn't work with Nelder
-            # Mead)
-            assert(kwargs['floatingFlight'] >= 0 and kwargs['floatingFlight'] <= 1),\
-                "floatingFlight value {} cannot be rounded to an integer: check bounds".format(
-                    kwargs['floatingFlight'])
-            kwargs['floatingFlight'] = int(round(kwargs['floatingFlight']))
+            # Check that Floating flight is within the bounds of zero and 3,
+            # then round to give an integer (Note: this doesn't work with Nelder
+            # Mead
+            print(kwargs['flightMode'])
+            if not isinstance(kwargs['flightMode'], str):
+                assert(kwargs['flightMode'] >= 0 and kwargs['flightMode'] <= len(self.flightModes)-1),\
+                    "flightMode value {} out of bounds (0, {})".format(
+                        kwargs['floatingFlight'], len(self.flightModes))
+                # Convert integer to a mode (1: standard, 2: cutdown, 3: floating)
+                kwargs['flightMode'] = self.flightModes[int(round(kwargs['flightMode']))]
 
-            # Repeat for cutdown flight:
-            assert(kwargs['cutdown'] >= 0 and kwargs['cutdown'] <= 1),\
-                "cutdown value {} cannot be rounded to an integer: check bounds".format(
-                    kwargs['cutdown'])
-            kwargs['cutdown'] = int(round(kwargs['cutdown']))
             return self.targetDistance(**kwargs)
 
         return objective
 
-    def targetDistance(self, t, targetAscentRate, floatingFlight, floatingAltitude,
-        floatDuration, cutdown, cutdownAltitude, balloonNominalBurstDia, returnWeightedSum=True):
+    def createObjectiveAndBounds(self, flightModes=['standard'],
+        flexibleBalloon=False, deviceActivationAltitudeBounds=(),
+        balloonModels=[], returnWeightedSum=True):
+        """
+
+        Returns
+        -------
+        objective : function
+
+        boundsDict : list
+            The bounds of each parameter in the returned objective function,
+            in the order they appear in the arguments.
+        """
+        # Build the dictionary of constants that the objective function will
+        # ignore:
+        constantsDict = {}
+
+        self.flightModes = flightModes
+
+        if len(flightModes) == 1:
+            mode = flightModes[0]
+            constantsDict['flightMode'] = mode
+        if 'floating' not in flightModes:
+            constantsDict['floatDuration'] = np.inf
+        if 'cutdown' not in flightModes and 'floating' not in flightModes:
+            constantsDict['deviceActivationAltitude'] = np.inf
+
+        if not flexibleBalloon:
+            constantsDict['balloonNominalBurstDia'] = balloons[self.balloonModel][1]
+
+        constantsDict['returnWeightedSum'] = returnWeightedSum
+
+        objective = self.targetDistanceFactory(constantsDict)
+
+        nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
+            self._balloonWeight, self.payloadTrainWeight,
+            self.environment.inflationTemperature,
+            self.environment.getPressure(self.launchSiteLat,
+                                              self.launchSiteLon,
+                                              self.launchSiteElev,
+                                              self.start_dateTime),
+            self._gasMolecularMass, self.excessPressureCoeff,
+            CD=(0.225 + 0.425)/2.)
+        nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
+                self._balloonWeight, self.payloadTrainWeight,
+                self.environment.inflationTemperature,
+                self.environment.getPressure(self.launchSiteLat,
+                                                  self.launchSiteLon,
+                                                  self.launchSiteElev,
+                                                  self.start_dateTime),
+                self._gasMolecularMass, self.excessPressureCoeff,
+                CD=(0.225 + 0.425)/2.)
+
+        # Set up the dictionary of bounds on all variables: note that some may
+        # not be passed to scipy, as this depends on the constants used in the
+        # objective function
+        boundsDict = {}
+        boundsDict['t'] = (0, self.windowDuration)
+        boundsDict['targetAscentRate'] = (1.5, 6.0)
+        boundsDict['floatingFlight'] = (0, 1)
+        # Limit float duration to a continuous venting (0) to the entire flight
+        # (The penalty imposed in targetDistance function should avoid this area)
+        boundsDict['floatDuration'] = (0, self.maxFlightTime)
+
+        # device altitude parameter bounds
+        boundsDict['deviceActivationAltitude'] = deviceActivationAltitudeBounds
+
+        # Variable balloon parameter bounds:
+        if balloonModels:
+            self.balloonsSelected = balloonModels
+        else:
+            self.balloonsSelected = [self.balloonModel]
+        balloonRads = [bal[1] for bal in self.balloonsSelected.values()]
+        boundsDict['balloonNominalBurstDia'] = (min(balloonRads), max(balloonRads))
+
+        # Need to subtract 1 from the selected flightModes, since this will be
+        # converted to an index (starting from 0):
+        boundsDict['flightMode'] = (0, len(self.flightModes) - 1)
+
+        # Get the maximum gas mass expected, for normalising the cost
+        # (gas mass) objective. ISA pressure is used, since the difference
+        # in max pressure vs isa pressure over this time window should not
+        # have a great effect on the maximum estimated gas mass
+        self.maxGasMass = liftingGasMass(nozzleLiftUpperBound,
+            balloons[self.largestBalloon][0], self.environment.inflationTemperature,
+            1013.25, self._gasMolecularMass, self.excessPressureCoeff)[0]
+
+        # self.variables was updated by self.targetDistanceFactory, and includes
+        # the name of all variables that will be used for optimisation, in order
+        bounds = [boundsDict[var] for var in self.variables]
+
+        return objective, bounds
+
+    def targetDistance(self, t, targetAscentRate, flightMode, deviceActivationAltitude,
+        floatDuration, balloonNominalBurstDia, returnWeightedSum=True):
         """
         Parameters
         ----------
@@ -290,11 +417,6 @@ class targetFlight(flight):
         """
         # t = X[0]
         # nozzleLift = X[1]
-        self.floatingFlight = floatingFlight
-        self.floatingAltitude = floatingAltitude
-        self.cutdown = cutdown
-        self.cutdownAltitude = cutdownAltitude
-        self.floatDuration = floatDuration
 
         # Find the balloon model with nearest burst diameter to that of the
         # input
@@ -317,10 +439,16 @@ class targetFlight(flight):
         log_msg = "Running flight for datetime {}, nozzleLift={}kg, balloon {}".format(
                         self.start_dateTime + timedelta(hours=t), nozzleLift, self.balloonModel)
 
-        if floatingFlight:
-            log_msg += ", Floating Altitude {}m".format(floatingAltitude)
-        if cutdown:
-            log_msg += ", cutdown Altitude {}m".format(cutdownAltitude)
+        if flightMode == 'floating':
+            log_msg += ", Floating Altitude {}m, Duration {} seconds".format(deviceActivationAltitude, floatDuration)
+            self.floatingFlight = True
+            self.floatingAltitude = deviceActivationAltitude
+            self.floatDuration = floatDuration
+
+        elif flightMode == 'cutdown':
+            log_msg += ", cutdown Altitude {}m".format(deviceActivationAltitude)
+            self.cutdown = True
+            self.cutdownAltitude = deviceActivationAltitude
 
         logger.debug(log_msg)
 
@@ -347,11 +475,11 @@ class targetFlight(flight):
         if not resultProfile.hasBurst:
             fitnessArr += [5e6] * Nobjs
         
-        # Distance objective (normalised)
+        # Distance objective (normalised) - CURRENTLY REMOVING NORMALISATION
         landing_lat = resultProfile.latitudeProfile[-1]
         landing_lon = resultProfile.longitudeProfile[-1]
-        distNorm = (tools.haversine(landing_lat, landing_lon, self.targetLat, self.targetLon) /
-            self.cutoffDistance)
+        distNorm = (tools.haversine(landing_lat, landing_lon, self.targetLat, self.targetLon)) # /
+            #self.cutoffDistance)
 
         # Cost related objective (currently evaluates the gas mass required to
         # achieve the nozzle lift used for this profile, normalised by the max
@@ -362,16 +490,16 @@ class targetFlight(flight):
             # Just use the full dict from available_balloons_parachutes.py
             balloonsSelected = balloons
 
-        gasMassNorm = self._gasMassAtInflation / self.maxGasMass
+        gasMassNorm = self._gasMassAtInflation # / self.maxGasMass
 
         # Time related objective (could be useful for minimizing cold soak time)
-        timeNorm = resultProfile.flightDurationSecs / self.maxFlightTime
+        timeNorm = resultProfile.flightDurationSecs  #/ self.maxFlightTime
 
         fitnessArr += [distNorm, gasMassNorm, timeNorm]
         fitness = self.flightFitness(fitnessArr)
         self.fitnesses.append(fitness)
-        X = [t, targetAscentRate, floatingFlight, floatingAltitude,
-            floatDuration, cutdown, cutdownAltitude, balloonNominalBurstDia]
+        X = [t, targetAscentRate, flightMode, deviceActivationAltitude,
+            floatDuration, balloonNominalBurstDia]
         resultProfile = targetProfile.fromProfile(resultProfile, fitness=fitness, X=X)
 
         # Use the ParetoFront update method to store this profile lexographically
@@ -394,14 +522,14 @@ class targetFlight(flight):
                 CD=(0.225 + 0.425)/2.)
         self.Xs.append(xk)
 
-    def bruteForce(self, Nx, Ny, balloonModel):
+    def bruteForce(self, Nx, Ny, balloonModel, flightMode='standard', deviceActivationAltitude=None, floatDuration=None):
         """ Sample the parameter space and form a map of the landing site
         distance landscape
         Currently only considers time
         """
         # Set up the arrays where results will be stored. Also storing the 
         # multiple objectives 
-        self.results = ParetoFront()
+        self.results = dptools.ParetoFront()
         scores = np.zeros([Nx, Ny])
         self.fitnesses = []
 
@@ -448,8 +576,8 @@ class targetFlight(flight):
                 for j, ascRate in enumerate(ascentRateVec):
                     # brute force approach
                     objective = self.targetDistance(t=t, targetAscentRate=ascRate,
-                        floatingFlight=False, floatingAltitude=np.inf,
-                        cutdown=False, cutdownAltitude=np.inf, floatDuration=np.inf,
+                        flightMode=flightMode, deviceActivationAltitude=deviceActivationAltitude,
+                        floatDuration=floatDuration,
                         balloonNominalBurstDia=balloons[self.balloonModel][1])
                     # distance_lift_vec[k] = distance
                     scores[i, j] = objective
@@ -458,7 +586,8 @@ class targetFlight(flight):
         self.bestProfile = bestProfile
         return bestProfile, dateTimeVec, nozzleLiftVec, scores
 
-    def bruteForceSlice(self, Nx=21, Ny=21, balloonModel=None, sliceParam='', Nslices=None, sliceBounds=()):
+    def bruteForceSlice(self, Nx=21, Ny=21, balloonModel=None, flightMode='standard',
+        sliceParam='', Nslices=None, sliceBounds=(), sliceParam_subset=[]):
         """Runs a brute force (discrete grid) of the targetDistance objective
         function, using Nx
 
@@ -478,56 +607,98 @@ class targetFlight(flight):
         sliceBounds : tuple
             the lower limit, upper limit between which to sample sliceParam
 
+        Notes
+        -----
+        Whichever parameter is chosen for slicing will be overwritten. E.g.:
+        if balloonModel='TA100', but the 
+
         :Example:
             >>> 
         """
 
         # Keep all paths for now, to visualize the landscape of nozzle lift
-        self.results = ParetoFront()
+        self.results = dptools.ParetoFront()
         self.fitnesses = []
 
-
         dts = np.linspace(0, self.windowDuration, Nx)
-
         distances = np.zeros(Nx)
-
         dateTimeVec = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
 
         if balloonModel:
             self.balloonModel = balloonModel
             self.balloonsSelected = [balloonModel]
 
-        if sliceParam:
-            assert(Nslices), "Argument 'Nslices' is required to slice the landscape through {}".format(sliceParam)
-            assert(sliceBounds), "Argument 'sliceBounds' is required to slice the landscape through {}".format(sliceParam)
+        assert(Nslices), "Argument 'Nslices' is required to slice the landscape through {}".format(sliceParam)
+        assert(sliceBounds), "Argument 'sliceBounds' is required to slice the landscape through {}".format(sliceParam)
+
+        # Start with a 'vanilla' objective function, where only t and targetAscentRate
+        # are used, and edit the single parameter which defines the slice:
+        objectivebounds_kwargs = {'flightModes': [flightMode],
+                                  'flexibleBalloon': False,
+                                  'deviceActivationAltitudeBounds': (),
+                                  'returnWeightedSum': True,
+                                  'balloonModels': [balloonModel]
+                                  }
+
+        if sliceParam == 'balloonModel':
+            objectivebounds_kwargs['balloonModels'] = sliceParam_subset
+            objectivebounds_kwargs['flexibleBalloon'] = True
+
+        elif sliceParam == 'flightMode':
+            assert(sliceParam_subset),\
+                'A deviceActivationAltitudeBounds tuple is required to slice through deviceActivationAltitude'
+            objectivebounds_kwargs['flightModes'] = sliceParam_subset
+
+        elif sliceParam == 'deviceActivationAltitude':
+            assert(sliceBounds),\
+                'A sliceBounds tuple is required to slice through deviceActivationAltitude'
+            objectivebounds_kwargs['deviceActivationAltitude'] = sliceBounds
+
+
+        objectiveFunction, bounds = self.createObjectiveAndBounds(flightModes=flightModes,
+            flexibleBalloon=flexibleBalloon,
+            deviceActivationAltitudeBounds=deviceActivationAltitudeBounds,
+            balloonModels=balloonModels,
+            returnWeightedSum=returnWeightedSum)
+
+        assert(len(bounds) == 3),\
+            '{} parameters appear in the objective function: not specified which to slice through.'.format(len(bounds))
+
+        if sliceParam in ('balloonModel', 'flightMode'):
+            # These are discrete parameters: ensure that only the correct number
+            # of slices is used
+            logger.warning('A discrete slicing parameter was selected: ignoring input Nslices')
+            Nslices = len(sliceParam_subset)
+
+        # The bounds in the last position belong to the slicing parameter
+        sliceVec = np.linspace(min(bounds[-1]), max(bounds[-1]), Nslices)
 
         # Build the objective function for these slices:
-        if sliceParam == 'floatingAltitude':
-            sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
-            constantsDict = {'floatingFlight': True, 'cutdown': False,
-                'cutdownAltitude':np.inf, 'floatDuration': np.inf, 
-                'balloonNominalBurstDia': balloons[self.balloonModel][1]}
+        # if sliceParam == 'floatingAltitude':
+        #     sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
+        #     constantsDict = {'floatingFlight': True, 'cutdown': False,
+        #         'cutdownAltitude':np.inf, 'floatDuration': np.inf, 
+        #         'balloonNominalBurstDia': balloons[self.balloonModel][1]}
 
-        elif sliceParam == 'cutdownAltitude':
-            cutdownFlight = True
-            sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
-            constantsDict = {'cutdown': True, 'floatingFlight': False,
-                'floatingAltitude':0, 'floatDuration': np.inf,
-                'balloonNominalBurstDia': balloons[self.balloonModel][1]}
+        # elif sliceParam == 'cutdownAltitude':
+        #     cutdownFlight = True
+        #     sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
+        #     constantsDict = {'cutdown': True, 'floatingFlight': False,
+        #         'floatingAltitude':0, 'floatDuration': np.inf,
+        #         'balloonNominalBurstDia': balloons[self.balloonModel][1]}
 
-        elif sliceParam == '':
-            # Just do the 2D case:
-            return self.bruteForce(Nx=Nx, Ny=Ny)
+        # else:
+        #     logger.debug("{} is an unknown slicing parameter. See targetFlight.targetDistance parameter names".format(sliceParam))
 
-        else:
-            logger.debug("{} is an unknown slicing parameter. See targetFlight.targetDistance parameter names".format(sliceParam))
 
-        objectiveFunction = self.targetDistanceFactory(constantsDict)
+        self.environment = launchSiteForecast
 
-        for launchSiteForecast in self.launchSiteForecasts:
-            self.environment = launchSiteForecast
-            # Estimated maximum bound of nozzle lift for target ascent rates
-            self.nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
+
+
+
+        ascentRateVec = np.linspace(self.minAscentRate, self.maxAscentRate, Ny)
+
+        nozzleLiftVec = np.array([nozzleLiftFixedAscent(ascRate,
                 self._balloonWeight, self.payloadTrainWeight,
                 self.environment.inflationTemperature,
                 self.environment.getPressure(self.launchSiteLat,
@@ -535,71 +706,59 @@ class targetFlight(flight):
                                                   self.launchSiteElev,
                                                   self.start_dateTime),
                 self._gasMolecularMass, self.excessPressureCoeff,
-                CD=(0.225 + 0.425)/2.)
-            self.nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
-                    self._balloonWeight, self.payloadTrainWeight,
-                    self.environment.inflationTemperature,
-                    self.environment.getPressure(self.launchSiteLat,
-                                                      self.launchSiteLon,
-                                                      self.launchSiteElev,
-                                                      self.start_dateTime),
-                    self._gasMolecularMass, self.excessPressureCoeff,
-                    CD=(0.225 + 0.425)/2.)
-
-            ascentRateVec = np.linspace(self.minAscentRate, self.maxAscentRate, Ny)
-
-            nozzleLiftVec = np.array([nozzleLiftFixedAscent(ascRate,
-                    self._balloonWeight, self.payloadTrainWeight,
-                    self.environment.inflationTemperature,
-                    self.environment.getPressure(self.launchSiteLat,
-                                                      self.launchSiteLon,
-                                                      self.launchSiteElev,
-                                                      self.start_dateTime),
-                    self._gasMolecularMass, self.excessPressureCoeff,
-                    CD=(0.225 + 0.425)/2.) for ascRate in ascentRateVec])
+                CD=(0.225 + 0.425)/2.) for ascRate in ascentRateVec])
 
 
-            # Get the maximum gas mass expected, for normalising the cost
-            # (gas mass) objective. ISA pressure is used, since the difference
-            # in max pressure vs isa pressure over this time window should not
-            # have a great effect on the maximum estimated gas mass
-            self.maxGasMass = liftingGasMass(nozzleLiftVec[-1],
-                balloons[self.largestBalloon][0], self.environment.inflationTemperature,
-                1013.25,
-                self._gasMolecularMass,
-                self.excessPressureCoeff)[0]
+        # Get the maximum gas mass expected, for normalising the cost
+        # (gas mass) objective. ISA pressure is used, since the difference
+        # in max pressure vs isa pressure over this time window should not
+        # have a great effect on the maximum estimated gas mass
+        self.maxGasMass = liftingGasMass(nozzleLiftVec[-1],
+            balloons[self.largestBalloon][0], self.environment.inflationTemperature,
+            1013.25,
+            self._gasMolecularMass,
+            self.excessPressureCoeff)[0]
 
-            X, Y, Z = np.meshgrid(dts, ascentRateVec, sliceVec, indexing="ij")
+        X, Y, Z = np.meshgrid(dts, ascentRateVec, sliceVec, indexing="ij")
 
-            sliceUnits = {'floatingAltitude': 'm', 'cutdownAltitude': 'm'}
+        sliceUnits = {'floatingAltitude': 'm', 'cutdownAltitude': 'm'}
 
-            logger.info("Date range: [{}, {}], Nx={} points".format(
-                dateTimeVec[0], dateTimeVec[-1], Nx))
-            logger.info("Nozzle Lift range: [{}, {}] (kg), Ny={} points".format(
-                self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny))
-            logger.info("{} range: [{}, {}] {}, Nz={} points]".format(
-                sliceParam, min(sliceBounds), max(sliceBounds),
-                sliceUnits[sliceParam], Nslices))
-            logger.debug("Running brute force calculation")
-            
-            points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+        logger.info("Date range: [{}, {}], Nx={} points".format(
+            dateTimeVec[0], dateTimeVec[-1], Nx))
+        logger.info("Nozzle Lift range: [{}, {}] (kg), Ny={} points".format(
+            self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny))
+        logger.info("{} range: [{}, {}] {}, Nz={} points]".format(
+            sliceParam, min(sliceBounds), max(sliceBounds),
+            sliceUnits[sliceParam], Nslices))
+        logger.debug("Running brute force calculation")
+        
+        points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
 
-            # Main calculation here
-            objectiveVals = [objectiveFunction(point) for point in points]
+        # Main calculation here
+        objectiveVals = [objectiveFunction(point) for point in points]
 
-            distances = np.reshape(objectiveVals, (np.size(dts), np.size(nozzleLiftVec), np.size(sliceVec)))
+        distances = np.reshape(objectiveVals, (np.size(dts), np.size(nozzleLiftVec), np.size(sliceVec)))
 
         bestProfile = max(self.results, key=lambda prof: sum(prof.fitness.wvalues))
         self.bestProfile = bestProfile
         return bestProfile, dateTimeVec, nozzleLiftVec, sliceVec, distances
 
-    def optimizeTargetLandingSite(self, useFloating=False, useCutdown=False,
-        flexibleBalloon=False, floatingAltitudeBounds=(),
-        cutdownAltitudeBounds=(), balloonModels=[], method='Nelder-Mead',
-        maxsize=10, weights=(), **kwargs):
+    def optimizeTargetLandingSite(self, flightModes=['standard'],
+        flexibleBalloon=False, deviceActivationAltitudeBounds=(), balloonModels=[],
+        method='Nelder-Mead', weights=(), seed=None, **kwargs):
         """
         Parameters
         ----------
+        flightMode : list of string
+            defines the flight modes to use in the optimization:
+            'standard' = standard ascent, burst, descent
+            'floating' = ascent with venting, float at deviceActivationAltitude,
+                burst after floatDuration seconds, then descend
+            'cutdown' : ascend up to deviceActivationAltitude, force burst, 
+                then descend
+
+
+
         params : :obj:`dict`
             The variables which will be used in the optimization
 
@@ -609,6 +768,7 @@ class targetFlight(flight):
             'Nelder-Mead' : Use scipy's Nelder mead pattern search. This has
                 proven to be sensitive to initial guesses for this application.
             'DE' : Use scipy differential evolution.
+            'GA' : Use a mu plus lambda genetic algorithm, from DEAP
 
         [maxsize] : int (default 10)
             The number of (lexographically sorted by distance from target site)
@@ -620,13 +780,18 @@ class targetFlight(flight):
             ordering. See self.weights.
 
         **kwargs - extra args to pass to scipy
+        
+        See Also
+        --------
+        targetFlight.targetDistance
+        
         """
         # run the simulation every hour over the time window. Note that we need
         # to also get weather to cover a flight of duration <maxFlightTime>,
         # starting at the end of the window.
         # scipy.optimize.fmin_ 
 
-        self.results = ParetoFront()
+        self.results = dptools.ParetoFront()
         # Store all objective scores, for Pareto plotting
         self.fitnesses = []
 
@@ -635,87 +800,20 @@ class targetFlight(flight):
         if weights:
             self.weights = weights
  
-        # Build the dictionary of constants that the objective function will
-        # ignore:
-        constantsDict = {}
-        if not useFloating:
-            constantsDict['floatingFlight'] = False
-            constantsDict['floatingAltitude'] = np.inf
-            constantsDict['floatDuration'] = np.inf
-
-        if not useCutdown:
-            constantsDict['cutdown'] = False
-            constantsDict['cutdownAltitude'] = np.inf
-            constantsDict['floatDuration'] = np.inf
-
-        if not flexibleBalloon:
-            constantsDict['balloonNominalBurstDia'] = balloons[self.balloonModel][1]
-
-        # Need to return a tuple of fitness for ga, or a weighted sum for scipy:
-        constantsDict['returnWeightedSum'] = (method.lower() != 'ga')
-
-        objective = self.targetDistanceFactory(constantsDict)
+         # Need to return a tuple of fitness for ga, or a weighted sum for scipy:
+        returnWeightedSum = (method.lower() != 'ga')
 
         # # For now, assume the first is the only interesting launch site
         # Estimated maximum bound of nozzle lift for target ascent rates
         self.environment = self.launchSiteForecasts[0]
 
-        nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
-            self._balloonWeight, self.payloadTrainWeight,
-            self.environment.inflationTemperature,
-            self.environment.getPressure(self.launchSiteLat,
-                                              self.launchSiteLon,
-                                              self.launchSiteElev,
-                                              self.start_dateTime),
-            self._gasMolecularMass, self.excessPressureCoeff,
-            CD=(0.225 + 0.425)/2.)
-        nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
-                self._balloonWeight, self.payloadTrainWeight,
-                self.environment.inflationTemperature,
-                self.environment.getPressure(self.launchSiteLat,
-                                                  self.launchSiteLon,
-                                                  self.launchSiteElev,
-                                                  self.start_dateTime),
-                self._gasMolecularMass, self.excessPressureCoeff,
-                CD=(0.225 + 0.425)/2.)
+        objective, bounds = self.createObjectiveAndBounds(flightModes=flightModes,
+            flexibleBalloon=flexibleBalloon,
+            deviceActivationAltitudeBounds=deviceActivationAltitudeBounds,
+            balloonModels=balloonModels,
+            returnWeightedSum=returnWeightedSum)
 
-        # Set up the dictionary of bounds on all variables: note that some may
-        # not be passed to scipy, as this depends on the constants used in the
-        # objective function
-        boundsDict = {}
-        boundsDict['t'] = (0, self.windowDuration)
-        boundsDict['targetAscentRate'] = (1.5, 6.0)
-        boundsDict['floatingFlight'] = (0, 1)
-        boundsDict['floatingAltitude'] = floatingAltitudeBounds
-        # Limit float duration to a continuous venting (0) to the entire flight
-        # (The penalty imposed in targetDistance function should avoid this area)
-        boundsDict['floatDuration'] = (0, self.maxFlightTime)
-
-        # Cutdown parameter bounds
-        boundsDict['cutdown'] = (0, 1)
-        boundsDict['cutdownAltitude'] = cutdownAltitudeBounds
-
-        # Variable balloon parameter bounds:
-        if balloonModels:
-            self.balloonsSelected = balloonModels
-        else:
-            self.balloonsSelected = [self.balloonModel]
-        balloonRads = [bal[1] for bal in self.balloonsSelected.values()]
-        boundsDict['balloonNominalBurstDia'] = (min(balloonRads), max(balloonRads))
-
-        # Get the maximum gas mass expected, for normalising the cost
-        # (gas mass) objective. ISA pressure is used, since the difference
-        # in max pressure vs isa pressure over this time window should not
-        # have a great effect on the maximum estimated gas mass
-        self.maxGasMass = liftingGasMass(nozzleLiftUpperBound,
-            balloons[self.largestBalloon][0], self.environment.inflationTemperature,
-            1013.25, self._gasMolecularMass, self.excessPressureCoeff)[0]
-
-        # self.variables was updated by self.targetDistanceFactory, and includes
-        # the name of all variables that will be used for optimisation, in order
-        bounds = [boundsDict[var] for var in self.variables]
-
-        if method in ('Nelder-Mead', 'L-BFGS-B'):
+        if method.lower() in ('nelder-mead', 'l-bfgs-b'):
             try:
                 x0 = kwargs.pop('x0')
             except KeyError:
@@ -735,12 +833,66 @@ class targetFlight(flight):
             bestProfile = self.results[0]
             self.bestProfile = bestProfile
 
-        elif method == 'DE':
+        elif method.lower() == 'de':
             res = opt.differential_evolution(objective, bounds=bounds,
-                callback=self._callbackStoreResult, **kwargs)
+                callback=self._callbackStoreResult, seed=seed, **kwargs)
 
             bestProfile = self.results[0]
             self.bestProfile = bestProfile
+
+        elif method.lower() == 'ga':
+            def evaluateIndividualTarget(individual):
+                X = interpIndividual(bounds, individual)
+                return objective(X)
+            creator.create("FitnessMin", base.Fitness, weights=weights)
+            creator.create("Individual", list, fitness=simulator.FitnessMin)
+
+            toolbox = base.Toolbox()
+
+            # Attribute generator
+            toolbox.register("attr_float", random.uniform, 0., 1.)
+
+            # Structure initializers
+            toolbox.register("individual", dptools.initRepeat, creator.Individual, toolbox.attr_float, len(self.variables))
+            toolbox.register("population", dptools.initRepeat, list, toolbox.individual)
+
+            # define the population to be a list of individuals
+            toolbox.register("population", dptools.initRepeat, list, toolbox.individual)
+
+            pop = toolbox.population(n=150)
+
+
+            toolbox.register("evaluate", evaluateIndividualTarget)
+            toolbox.register("mate", dptools.cxBlend, alpha=1.5)
+            toolbox.register("mutate", dptools.mutGaussian, mu=0, sigma=3, indpb=0.3)
+            toolbox.register("select", dptools.selNSGA2)
+
+            toolbox.decorate("mate", checkBounds(0, 1))
+            toolbox.decorate("mutate", checkBounds(0, 1))
+            
+            if seed:
+                random.seed(seed)
+
+            MU, LAMBDA = 50, 100
+            pop = toolbox.population(n=MU)
+            stats = tools.Statistics(lambda ind: ind.fitness.values)
+            stats.register("avg", np.mean, axis=0)
+            stats.register("std", np.std, axis=0)
+            stats.register("min", np.min, axis=0)
+            stats.register("max", np.max, axis=0)
+            
+            # Limit to 1500 evals (about 25 minutes)
+            maxevals = 1000
+            cxpb = 0.5
+            mutpb = 0.2
+            
+            # Max number of evaluations is (on average) the probability of replacement
+            # times by the population size, for each generation: inverse
+            ngen = int(round(maxevals / (MU * (cxpb + mutpb))))
+                              
+            algorithms.eaMuPlusLambda(pop, toolbox, mu=MU, lambda_=LAMBDA, 
+                                      cxpb=cxpb, mutpb=mutpb, ngen=ngen, 
+                                      stats=stats)
 
         else:
             raise ValueError('No known optimization method for {}'.format(method))
@@ -953,3 +1105,79 @@ class targetFlight(flight):
         fig.show()
         legend = ax.legend(loc='upper right', ncol=2)
         return fig, ax
+
+    def plotParetoFront(self):
+        """Plots the points stored in the simulator.ParetoFront (containing the non-dominated
+        Pareto efficient individuals).
+        
+        Notes
+        -----
+        * Only works for 2 or 3 objectives. 
+        * Assumes that all fitnesses have the same number of values and weightings
+        """
+        fitnesses = self.fitnesses
+
+        nonzero_indices = np.nonzero(fitnesses[0].weights)[0]
+        assert(len(nonzero_indices) >= 2),\
+            "Input fitness array has less than 2 weighted objectives: no useful Pareto solutions."
+            
+        # Dictionary of weight_index : label pairs. Extract the axes labels for the non zero weighted vars
+        axlabelsAvailable = {0: r'$\bar{\Delta}$',
+                           1: r'$\bar{m}_{gas}$',
+                           2: r'$\bar{t} \cdot$'}
+        axlabels = [axlabelsAvailable[idx] for idx in nonzero_indices]
+        
+        if len(nonzero_indices) == 2:
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            fs = list(zip(*[fitness.values for fitness in fitnesses]))
+            f1 = np.array(fs[nonzero_indices[0]])
+            f2 = np.array(fs[nonzero_indices[1]])
+            ax.plot(f1, f2, 'kx')
+            pareto_vars = list(zip(*[profile.fitness.values for profile in self.results]))
+            pareto_array = np.array([pareto_vars[nonzero_indices[0]], pareto_vars[nonzero_indices[1]]]).T
+            pareto_array = pareto_array[np.argsort(pareto_array[:, 1])]
+            ax.plot(pareto_array[:, 0], pareto_array[:, 1], 'ko--', mfc='none',
+                    markersize=16, label='Pareto front')
+
+            # Find best (assumes that the weights are tuned to how import each parameter is)
+            iBest = np.argmin(pareto_array[:,0] + pareto_array[:, 1])
+            ax.plot(pareto_array[iBest, 0], pareto_array[iBest, 1], 'k*', markersize=12, label='Best')
+
+            # Formatting
+            ax.set_xlabel(axlabels[0])
+            ax.set_ylabel(axlabels[1])
+            ax.legend(loc='upper right')
+            
+        elif len(nonzero_indices) == 3:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            f1, f2, f3 = zip(*[fitness.values for fitness in fitnesses])
+            f1 = np.array(f1)
+            f2 = np.array(f2)
+            f3 = np.array(f3)
+            ax.scatter(f1, f2, f3, label='Brute Force Points')
+            pareto_x, pareto_y, pareto_z = zip(*[profile.fitness.values for profile in self.results])
+            pareto_array = np.array([pareto_x, pareto_y, pareto_z]).T
+        
+            ax.scatter(pareto_array[:, 0], pareto_array[:, 1], pareto_array[:, 2])#, facecolors='k',
+    #                    label='Pareto points')
+        
+            # Plot the Pareto surface triangulation
+            triang = mtri.Triangulation(pareto_array[:,0],pareto_array[:,1])
+            ax.plot_trisurf(triang,pareto_array[:,2],color='red', alpha=0.5)
+
+            # Find best (assumes that the weights are tuned to how important each parameter is)
+            iBest = np.argmin(pareto_array[:,0] + pareto_array[:, 1])
+            ax.plot([pareto_array[iBest, 0]], [pareto_array[iBest, 1]], [pareto_array[iBest, 2]], 'k*', markersize=12, label='Best')
+
+            # Formatting
+            ax.set_xlabel(axlabels[0])
+            ax.set_ylabel(axlabels[1])
+            ax.set_zlabel(axlabels[2])
+            ax.legend(loc='upper right')        
+        
+        else:
+            raise ValueError("Can't support plotting {}D Pareto front. Adjust weightings.".format(len(nonzero_indices)))
+        
+            return None
