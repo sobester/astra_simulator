@@ -2,11 +2,10 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-07-06 18:12:32
+# @Last Modified time: 2017-07-07 12:44:15
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from .available_balloons_parachutes import balloons
-from .target_landing import targetProfile
 
 from datetime import datetime, timedelta
 import logging
@@ -295,7 +294,6 @@ class targetFlight(flight):
             # Check that Floating flight is within the bounds of zero and 3,
             # then round to give an integer (Note: this doesn't work with Nelder
             # Mead
-            print(kwargs['flightMode'])
             if not isinstance(kwargs['flightMode'], str):
                 assert(kwargs['flightMode'] >= 0 and kwargs['flightMode'] <= len(self.flightModes)-1),\
                     "flightMode value {} out of bounds (0, {})".format(
@@ -308,7 +306,7 @@ class targetFlight(flight):
         return objective
 
     def createObjectiveAndBounds(self, flightModes=['standard'],
-        flexibleBalloon=False, deviceActivationAltitudeBounds=(),
+        flexibleBalloon=False, deviceActivationAltitudeBounds=(), floatDuration=None,
         balloonModels=[], returnWeightedSum=True):
         """
 
@@ -323,16 +321,28 @@ class targetFlight(flight):
         # Build the dictionary of constants that the objective function will
         # ignore:
         constantsDict = {}
+        boundsDict = {}
+
 
         self.flightModes = flightModes
 
         if len(flightModes) == 1:
             mode = flightModes[0]
             constantsDict['flightMode'] = mode
+
         if 'floating' not in flightModes:
             constantsDict['floatDuration'] = np.inf
-        if 'cutdown' not in flightModes and 'floating' not in flightModes:
+        elif floatDuration:
+            constantsDict['floatDuration'] = floatDuration
+
+        if ('cutdown' not in flightModes and 'floating' not in flightModes) or not deviceActivationAltitudeBounds:
             constantsDict['deviceActivationAltitude'] = np.inf
+
+        if len(deviceActivationAltitudeBounds) == 1:
+            constantsDict['deviceActivationAltitude'] = deviceActivationAltitudeBounds[0]
+        else:
+            # device altitude parameter bounds
+            boundsDict['deviceActivationAltitude'] = deviceActivationAltitudeBounds
 
         if not flexibleBalloon:
             constantsDict['balloonNominalBurstDia'] = balloons[self.balloonModel][1]
@@ -341,15 +351,15 @@ class targetFlight(flight):
 
         objective = self.targetDistanceFactory(constantsDict)
 
-        nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
-            self._balloonWeight, self.payloadTrainWeight,
-            self.environment.inflationTemperature,
-            self.environment.getPressure(self.launchSiteLat,
-                                              self.launchSiteLon,
-                                              self.launchSiteElev,
-                                              self.start_dateTime),
-            self._gasMolecularMass, self.excessPressureCoeff,
-            CD=(0.225 + 0.425)/2.)
+        # nozzleLiftLowerBound = nozzleLiftFixedAscent(self.minAscentRate,
+        #     self._balloonWeight, self.payloadTrainWeight,
+        #     self.environment.inflationTemperature,
+        #     self.environment.getPressure(self.launchSiteLat,
+        #                                       self.launchSiteLon,
+        #                                       self.launchSiteElev,
+        #                                       self.start_dateTime),
+        #     self._gasMolecularMass, self.excessPressureCoeff,
+        #     CD=(0.225 + 0.425)/2.)
         nozzleLiftUpperBound = nozzleLiftFixedAscent(self.maxAscentRate,
                 self._balloonWeight, self.payloadTrainWeight,
                 self.environment.inflationTemperature,
@@ -363,16 +373,12 @@ class targetFlight(flight):
         # Set up the dictionary of bounds on all variables: note that some may
         # not be passed to scipy, as this depends on the constants used in the
         # objective function
-        boundsDict = {}
         boundsDict['t'] = (0, self.windowDuration)
         boundsDict['targetAscentRate'] = (1.5, 6.0)
         boundsDict['floatingFlight'] = (0, 1)
         # Limit float duration to a continuous venting (0) to the entire flight
         # (The penalty imposed in targetDistance function should avoid this area)
         boundsDict['floatDuration'] = (0, self.maxFlightTime)
-
-        # device altitude parameter bounds
-        boundsDict['deviceActivationAltitude'] = deviceActivationAltitudeBounds
 
         # Variable balloon parameter bounds:
         if balloonModels:
@@ -587,7 +593,8 @@ class targetFlight(flight):
         return bestProfile, dateTimeVec, nozzleLiftVec, scores
 
     def bruteForceSlice(self, Nx=21, Ny=21, balloonModel=None, flightMode='standard',
-        sliceParam='', Nslices=None, sliceBounds=(), sliceParam_subset=[]):
+        deviceActivationAltitude=np.inf, floatDuration=np.inf, sliceParam='',
+        Nslices=None, sliceBounds=(), sliceParam_subset=[]):
         """Runs a brute force (discrete grid) of the targetDistance objective
         function, using Nx
 
@@ -620,6 +627,9 @@ class targetFlight(flight):
         self.results = dptools.ParetoFront()
         self.fitnesses = []
 
+        # For now, assume that we only want to simulate one launch site
+        self.environment = self.launchSiteForecasts[0]
+
         dts = np.linspace(0, self.windowDuration, Nx)
         distances = np.zeros(Nx)
         dateTimeVec = [self.start_dateTime + timedelta(hours=dt) for dt in dts]
@@ -627,44 +637,69 @@ class targetFlight(flight):
         if balloonModel:
             self.balloonModel = balloonModel
             self.balloonsSelected = [balloonModel]
+        if flightMode == 'floating':
+            if floatDuration == np.inf:
+                logger.warning('Input floatDuration is infinite: no flights will land.')
 
         assert(Nslices), "Argument 'Nslices' is required to slice the landscape through {}".format(sliceParam)
-        assert(sliceBounds), "Argument 'sliceBounds' is required to slice the landscape through {}".format(sliceParam)
+
+        paramNames = inspect.signature(self.targetDistance).parameters
+        assert(sliceParam in paramNames),\
+            'sliceParam must be a named argument in targetFlight.targetDistance'
 
         # Start with a 'vanilla' objective function, where only t and targetAscentRate
         # are used, and edit the single parameter which defines the slice:
         objectivebounds_kwargs = {'flightModes': [flightMode],
                                   'flexibleBalloon': False,
-                                  'deviceActivationAltitudeBounds': (),
+                                  'deviceActivationAltitudeBounds': [deviceActivationAltitude],
                                   'returnWeightedSum': True,
-                                  'balloonModels': [balloonModel]
+                                  'balloonModels': [balloonModel],
+                                  'floatDuration': floatDuration
                                   }
 
-        if sliceParam == 'balloonModel':
+        if sliceParam == 'balloonNominalBurstDia':
+            assert(sliceParam_subset),\
+                'A sliceParam_subset is required to slice through balloonModels: See docs.'
             objectivebounds_kwargs['balloonModels'] = sliceParam_subset
             objectivebounds_kwargs['flexibleBalloon'] = True
 
         elif sliceParam == 'flightMode':
             assert(sliceParam_subset),\
-                'A deviceActivationAltitudeBounds tuple is required to slice through deviceActivationAltitude'
+                'Input sliceParam_subset is required to slice through flightModes: See docs.'
             objectivebounds_kwargs['flightModes'] = sliceParam_subset
 
         elif sliceParam == 'deviceActivationAltitude':
             assert(sliceBounds),\
                 'A sliceBounds tuple is required to slice through deviceActivationAltitude'
-            objectivebounds_kwargs['deviceActivationAltitude'] = sliceBounds
+            objectivebounds_kwargs['deviceActivationAltitudeBounds'] = sliceBounds
 
+        objectiveFunction, bounds = self.createObjectiveAndBounds(**objectivebounds_kwargs)
 
-        objectiveFunction, bounds = self.createObjectiveAndBounds(flightModes=flightModes,
-            flexibleBalloon=flexibleBalloon,
-            deviceActivationAltitudeBounds=deviceActivationAltitudeBounds,
-            balloonModels=balloonModels,
-            returnWeightedSum=returnWeightedSum)
+        ascentBounds = bounds[1]
+
+        nozzleLiftLowerBound = nozzleLiftFixedAscent(ascentBounds[0],
+            self._balloonWeight, self.payloadTrainWeight,
+            self.environment.inflationTemperature,
+            self.environment.getPressure(self.launchSiteLat,
+                                              self.launchSiteLon,
+                                              self.launchSiteElev,
+                                              self.start_dateTime),
+            self._gasMolecularMass, self.excessPressureCoeff,
+            CD=(0.225 + 0.425)/2.)
+        nozzleLiftUpperBound = nozzleLiftFixedAscent(ascentBounds[1],
+                self._balloonWeight, self.payloadTrainWeight,
+                self.environment.inflationTemperature,
+                self.environment.getPressure(self.launchSiteLat,
+                                                  self.launchSiteLon,
+                                                  self.launchSiteElev,
+                                                  self.start_dateTime),
+                self._gasMolecularMass, self.excessPressureCoeff,
+                CD=(0.225 + 0.425)/2.)
 
         assert(len(bounds) == 3),\
             '{} parameters appear in the objective function: not specified which to slice through.'.format(len(bounds))
 
-        if sliceParam in ('balloonModel', 'flightMode'):
+        if sliceParam in ('balloonNominalBurstDia', 'flightMode'):
             # These are discrete parameters: ensure that only the correct number
             # of slices is used
             logger.warning('A discrete slicing parameter was selected: ignoring input Nslices')
@@ -672,29 +707,6 @@ class targetFlight(flight):
 
         # The bounds in the last position belong to the slicing parameter
         sliceVec = np.linspace(min(bounds[-1]), max(bounds[-1]), Nslices)
-
-        # Build the objective function for these slices:
-        # if sliceParam == 'floatingAltitude':
-        #     sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
-        #     constantsDict = {'floatingFlight': True, 'cutdown': False,
-        #         'cutdownAltitude':np.inf, 'floatDuration': np.inf, 
-        #         'balloonNominalBurstDia': balloons[self.balloonModel][1]}
-
-        # elif sliceParam == 'cutdownAltitude':
-        #     cutdownFlight = True
-        #     sliceVec = np.linspace(min(sliceBounds), max(sliceBounds), Nslices)
-        #     constantsDict = {'cutdown': True, 'floatingFlight': False,
-        #         'floatingAltitude':0, 'floatDuration': np.inf,
-        #         'balloonNominalBurstDia': balloons[self.balloonModel][1]}
-
-        # else:
-        #     logger.debug("{} is an unknown slicing parameter. See targetFlight.targetDistance parameter names".format(sliceParam))
-
-
-        self.environment = launchSiteForecast
-
-
-
 
         ascentRateVec = np.linspace(self.minAscentRate, self.maxAscentRate, Ny)
 
@@ -721,20 +733,29 @@ class targetFlight(flight):
 
         X, Y, Z = np.meshgrid(dts, ascentRateVec, sliceVec, indexing="ij")
 
-        sliceUnits = {'floatingAltitude': 'm', 'cutdownAltitude': 'm'}
+        sliceUnits = {'deviceActivationAltitude': 'm'}
 
         logger.info("Date range: [{}, {}], Nx={} points".format(
             dateTimeVec[0], dateTimeVec[-1], Nx))
         logger.info("Nozzle Lift range: [{}, {}] (kg), Ny={} points".format(
-            self.nozzleLiftLowerBound, self.nozzleLiftUpperBound, Ny))
-        logger.info("{} range: [{}, {}] {}, Nz={} points]".format(
-            sliceParam, min(sliceBounds), max(sliceBounds),
-            sliceUnits[sliceParam], Nslices))
+            nozzleLiftLowerBound, nozzleLiftUpperBound, Ny))
+
+        if sliceParam in ('balloonNominalBurstDia', 'flightMode'):
+            logger.info("{} set: {}]".format(
+                sliceParam, sliceParam_subset))
+        else:
+            logger.info("{} range: [{}, {}] {}, Nz={} points]".format(
+                sliceParam, min(sliceBounds), max(sliceBounds),
+                sliceUnits[sliceParam], Nslices))
+
         logger.debug("Running brute force calculation")
         
         points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
 
         # Main calculation here
+        # objectiveVals = []
+        # for point in points:
+        #     objectiveVals.append(objectiveFunction(point))
         objectiveVals = [objectiveFunction(point) for point in points]
 
         distances = np.reshape(objectiveVals, (np.size(dts), np.size(nozzleLiftVec), np.size(sliceVec)))
@@ -845,7 +866,7 @@ class targetFlight(flight):
                 X = interpIndividual(bounds, individual)
                 return objective(X)
             creator.create("FitnessMin", base.Fitness, weights=weights)
-            creator.create("Individual", list, fitness=simulator.FitnessMin)
+            creator.create("Individual", list, fitness=self.flightFitness)
 
             toolbox = base.Toolbox()
 
@@ -861,10 +882,9 @@ class targetFlight(flight):
 
             pop = toolbox.population(n=150)
 
-
             toolbox.register("evaluate", evaluateIndividualTarget)
             toolbox.register("mate", dptools.cxBlend, alpha=1.5)
-            toolbox.register("mutate", dptools.mutGaussian, mu=0, sigma=3, indpb=0.3)
+            toolbox.register("mutate", dptools.mutGaussian, mu=0, sigma=1, indpb=0.3)
             toolbox.register("select", dptools.selNSGA2)
 
             toolbox.decorate("mate", checkBounds(0, 1))
@@ -875,14 +895,14 @@ class targetFlight(flight):
 
             MU, LAMBDA = 50, 100
             pop = toolbox.population(n=MU)
-            stats = tools.Statistics(lambda ind: ind.fitness.values)
+            stats = dptools.Statistics(lambda ind: ind.fitness.values)
             stats.register("avg", np.mean, axis=0)
             stats.register("std", np.std, axis=0)
             stats.register("min", np.min, axis=0)
             stats.register("max", np.max, axis=0)
             
-            # Limit to 1500 evals (about 25 minutes)
-            maxevals = 1000
+            # Limit to 1000 evals (about 25 minutes)
+            maxevals = 1500
             cxpb = 0.5
             mutpb = 0.2
             
