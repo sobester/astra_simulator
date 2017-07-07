@@ -16,8 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 def haversine(lat1, lon1, lat2, lon2):
-    """Helper function for estimating ground distance between two lat lon
-    points on the Earth's surface
+    """Calculated and returns the great circle distance between two lat lon
+    points on the Earth's surface, using the haversine formula [1]
+
+    References
+    ----------
+    [1] https://en.wikipedia.org/wiki/Haversine_formula
     """
     R = 6371.0    # Earth radius in kilometers (assume spherical)
 

@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   p-chambers
-# @Last Modified time: 2017-07-07 12:44:15
+# @Last Modified time: 2017-07-07 18:29:19
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from .available_balloons_parachutes import balloons
@@ -36,6 +36,16 @@ import functools
 # Helper functions for deap
 #############################################################################
 def interpIndividual(bounds, individual):
+    """Converts normalised values contained within the individual
+    (python iterable) to a value interpolated between the corresponding
+    bounds
+
+    Parameters
+    ----------
+    bounds : list of tuples
+        The (min, max) bounds for each variable in 'individual'
+    individual : subclass of list, or iterable
+        The genetic algorithm individual, undergoing a fitness test."""
     interp = []
     for i in range(len(individual)):
         bmin, bmax = bounds[i]
@@ -43,6 +53,11 @@ def interpIndividual(bounds, individual):
     return interp
 
 def checkBounds(bmin, bmax):
+    """Returns a decorator for use with deap, which ensures that inputs to the
+    decorated function are within the bounds of bmin, bmax.
+    
+    Inputs of the wrapped function will snap to the nearest bound (bmin or bmax)
+    if outside these limits."""
     def decorator(func):
         def wrappper(*args, **kargs):
             offspring = func(*args, **kargs)
@@ -81,6 +96,20 @@ class targetProfile(flightProfile):
                  fitness,
                  X
                  ):
+    """Extends the astra.simulator.flightProfile to assign both a fitness
+    measure, and a vector of inputs used in the objective function.
+
+    Parameters
+    ----------
+    fitness : subclass of :obj:`deap.base.BaseFitness`
+        The fitness measure (supports multiple objectives).
+    X : array
+        array of inputs to astra.targetFlight.targetDistance.
+
+    See Also
+    --------
+    astra.simulator.flightProfile, astra.targetFlight.targetDistance
+    """
         super(targetProfile, self).__init__(launchDateTime=launchDateTime,
             nozzleLift=nozzleLift,
             flightNumber=flightNumber,
@@ -108,7 +137,8 @@ class targetFlight(flight):
     targetLat, targetLon : scalar
         The target landing latitude/longitude
     launchSites : list of lat, lon, elev triplets
-        lat, lon and elev triplets for each launch site 
+        lat, lon and elev triplets for each launch site. Currently only the
+        first is used, however optimizing the launch site may be added later.
     nozzleLift : scalar
         The nozzle lift (in kg). This class currently uses a static nozzle
         lift, and searches time only. Future versions will also search the
@@ -136,7 +166,6 @@ class targetFlight(flight):
                  nozzleLift,
                  payloadTrainWeight,
                  inflationTemperature,
-                 weights=(-1, -1, -1),
                  windowDuration=24,
                  requestSimultaneous=False,
                  HD=False,
@@ -224,7 +253,7 @@ class targetFlight(flight):
         self.Xs = []
 
         self.flightFitness = deepcopy(creator.flightFitness)
-
+        
         # This will update the weights used by creator.flightFitness, and hence
         # the order of the individuals added to the ParetoFront by the
         # targetDistance function.
@@ -421,9 +450,6 @@ class targetFlight(flight):
         distance : scalar
             The euclidean norm of [target_lon - lon, target_lat - lat] (degrees)
         """
-        # t = X[0]
-        # nozzleLift = X[1]
-
         # Find the balloon model with nearest burst diameter to that of the
         # input
         if balloonNominalBurstDia:
@@ -528,14 +554,18 @@ class targetFlight(flight):
                 CD=(0.225 + 0.425)/2.)
         self.Xs.append(xk)
 
-    def bruteForce(self, Nx, Ny, balloonModel, flightMode='standard', deviceActivationAltitude=None, floatDuration=None):
+    def bruteForce(self, Nx, Ny, balloonModel, flightMode='standard',
+        deviceActivationAltitude=None, floatDuration=None, storeAll=False):
         """ Sample the parameter space and form a map of the landing site
         distance landscape
         Currently only considers time
         """
         # Set up the arrays where results will be stored. Also storing the 
-        # multiple objectives 
-        self.results = dptools.ParetoFront()
+        # multiple objectives.
+        if not storeAll:
+            self.results = dptools.ParetoFront()
+        else:
+            self.results = dptools.HallOfFame()
         scores = np.zeros([Nx, Ny])
         self.fitnesses = []
 
@@ -594,7 +624,7 @@ class targetFlight(flight):
 
     def bruteForceSlice(self, Nx=21, Ny=21, balloonModel=None, flightMode='standard',
         deviceActivationAltitude=np.inf, floatDuration=np.inf, sliceParam='',
-        Nslices=None, sliceBounds=(), sliceParam_subset=[]):
+        Nslices=None, sliceBounds=(), sliceParam_subset=[], storeAll=False):
         """Runs a brute force (discrete grid) of the targetDistance objective
         function, using Nx
 
@@ -624,7 +654,10 @@ class targetFlight(flight):
         """
 
         # Keep all paths for now, to visualize the landscape of nozzle lift
-        self.results = dptools.ParetoFront()
+        if not storeAll:
+            self.results = dptools.ParetoFront()
+        else:
+            self.results = dptools.HallOfFame()
         self.fitnesses = []
 
         # For now, assume that we only want to simulate one launch site
@@ -765,8 +798,9 @@ class targetFlight(flight):
         return bestProfile, dateTimeVec, nozzleLiftVec, sliceVec, distances
 
     def optimizeTargetLandingSite(self, flightModes=['standard'],
-        flexibleBalloon=False, deviceActivationAltitudeBounds=(), balloonModels=[],
-        method='Nelder-Mead', weights=(), seed=None, **kwargs):
+        flexibleBalloon=False, deviceActivationAltitudeBounds=[np.inf],
+        balloonModels=[], method='Nelder-Mead',
+        weights=(), seed=None, **kwargs):
         """
         Parameters
         ----------
@@ -777,12 +811,18 @@ class targetFlight(flight):
                 burst after floatDuration seconds, then descend
             'cutdown' : ascend up to deviceActivationAltitude, force burst, 
                 then descend
-
-
-
-        params : :obj:`dict`
-            The variables which will be used in the optimization
-
+        flexibleBalloon : bool (default False)
+            Switches on the balloonNominalBurstDia as a metric for the
+            optimization. For this to be useful, balloonModels should also
+            be populated with more thna one model
+        deviceActivationAltitudeBounds : list of scalar
+            If length 1, the altitude contained in this list will be kept
+            constant through optimization. If two values are provided, these
+            will be the min and max of the deviceActivationAltitude parameter
+            of self.targetFlight
+        balloonModels : list of string
+            the allowable balloons models to search during optimization
+            (if flexibleBalloon is True)
         method : string
             'brute-force' : Sample flight every hour within the time window
                 *Note: this probably isn't suitable given more than two params
@@ -1032,7 +1072,7 @@ class targetFlight(flight):
         """
         # Find the rows that are outside the expected range, and scaled ranges
         # of the plot
-        scores_filtered = scores[scores < 5]
+        scores_filtered = scores[scores < 5e6]
         if np.size(scores_filtered) < np.size(scores):
             logger.warning("Some scores are poorly scaled. Plot values will be cut off at +5")
 
@@ -1142,9 +1182,9 @@ class targetFlight(flight):
             "Input fitness array has less than 2 weighted objectives: no useful Pareto solutions."
             
         # Dictionary of weight_index : label pairs. Extract the axes labels for the non zero weighted vars
-        axlabelsAvailable = {0: r'$\bar{\Delta}$',
-                           1: r'$\bar{m}_{gas}$',
-                           2: r'$\bar{t} \cdot$'}
+        axlabelsAvailable = {0: r'$\Delta (km)$',
+                           1: r'$m_{gas} (kg)$',
+                           2: r'$t (seconds))$'}
         axlabels = [axlabelsAvailable[idx] for idx in nonzero_indices]
         
         if len(nonzero_indices) == 2:

@@ -92,12 +92,21 @@ class GFS_Handler(object):
     date_time : :obj:`datetime.datetime.`
         UTC time of the required forecast (min 30 days from today, max 10 days
         from latest cycle issuing time, see warning above).
-    [forecastDuration] : scalar (default 4)
-        the duration in hours of the forecast data required.
     [HD] : bool (default True)
         if FALSE, non-HD forecast will be downloaded. Otherwise, HD forecast
         will be downloaded and, if the data size is too high, the GFS_Handler
         will automatically switch to non-HD.
+    [forecastDuration] : scalar (default 4)
+        the duration in hours of the forecast data required.
+    [use_async] : bool (default True)
+        Use an asynchronous request for downloads. This should speed up the
+        download, but may incur larger memory overhead for large forecastDuration.
+    [requestSimultaneous] : bool (default True)
+        If True, populate a dictionary of responses from the web download
+        requests, then process the data. If False, each response will be
+        removed once the data has been processed: This has better memory
+        overhead for large ForecastDuration, but is slower, and does not work
+        with asynchronous requesting (use_async)
     [debugging] : bool (default False)
         If debugging is TRUE, all the information available will be logged.
         Otherwise, only errors will be logged.
@@ -105,6 +114,9 @@ class GFS_Handler(object):
         If log_to_file is set to TRUE, all error and debug logs will be stored
         in a file called error.log. If FALSE, all error and debug logs will be
         directly displayed on the terminal or command line.
+    [progressHandler] : function (default None)
+        Progress for each downloaded parameter (in %) will be passed to this
+        function, if provided.
 
     Notes
     -----
@@ -351,9 +363,6 @@ class GFS_Handler(object):
             'hgtprs': 'Altitude',
             'ugrdprs': 'U Winds',
             'vgrdprs': 'V Winds'
-        requestLongitudes : list
-            list of the longitudes for which to make the request (usually one,
-            but two are required around the greenwich median)
         cycle : :obj:`datetime.datetime`
             The cycle datetime for which to obtain the forecast
         requestTime : :obj:`datetime.datetime`
@@ -396,6 +405,27 @@ class GFS_Handler(object):
         Allows the response to go out of scope after creating the matrices,
         hence it may decrease the memory overhead compared with downloading
         all items simultaneously
+
+        Parameters
+        ----------
+        requestVar : string
+            noaa identifier of the variable name:
+            'tmpprs': Temperature,
+            'hgtprs': 'Altitude',
+            'ugrdprs': 'U Winds',
+            'vgrdprs': 'V Winds'
+        cycle : :obj:`datetime.datetime`
+            The cycle datetime for which to obtain the forecast
+        requestTime : :obj:`datetime.datetime`
+            The launch datetime for which to obtain the forecast
+
+        Returns
+        -------
+        data_matrix : numpy array
+            The downloaded 4D data (empty if the response failed)
+        data_map : dict
+            the (empty if the response failed)
+
         """
         response = self._NOAA_request(requestVar, cycle, requestTime)
         if response:
@@ -517,7 +547,47 @@ class GFS_Handler(object):
         return results
 
     def getNOAAMatricesMapsCycle(self, thisCycle, requestTime, progressHandler):
-        """
+        """For an input cycle, this function will load all weather variables.
+
+        Multiple attempts will be made for each variable, if the response fails.
+        This is, therefore, not the best function to use if it is not known
+        beforehand whether the data cycle exists: See Notes.
+
+        Parameters
+        ----------
+        requestLongitudes : list
+            list of the longitudes for which to make the request (usually one,
+            but two are required around the greenwich median)
+        thisCycle : :obj:`datetime.datetime`
+            The cycle datetime for which to obtain the forecast
+        requestTime : :obj:`datetime.datetime`
+            The launch datetime for which to obtain the forecast
+        progressHandler : function
+            Function that handles the download progress. This is usually
+            the member function astra.flight.updateProgress.
+
+        Returns
+        -------
+        data_matrices : dict
+            ('noaa_name' : data_matrix) pairs, where response is the returned
+            data string. Keys:
+            'tmpprs': Temperature,
+            'hgtprs': 'Altitude',
+            'ugrdprs': 'U Winds',
+            'vgrdprs': 'V Winds'
+        data_maps : dict
+            keys as in data_matrices, but values instead contain the data_maps
+            reutrned by GFS_Handler.processNOAARequest
+
+        Notes
+        -----
+        GFS_Handler.getNOAAData is the primary download function, and will
+        make multiple attempts to find a cycle before referring the download
+        of all other variables to this function.
+
+        See Also
+        --------
+        GFS_Handler.getNOAAData, GFS_Handler.downloadForecast
         """
         data_matrices = {}
         data_maps = {}
@@ -563,7 +633,31 @@ class GFS_Handler(object):
         return data_matrices, data_maps
 
     def getNOAAData(self, simulationDateTime, latestCycleDateTime, progressHandler):
-        """
+        """Makes multiple attempts to find an available data set (cycle) from
+        the noaa web service, before downloading all results with
+        getNOAAMatricesMapsCycle.
+
+        Parameters
+        ----------
+        simulationDateTime : :obj:`datetime.datetime`
+        latestCycleDateTime : :obj:`datetime.datetime
+            The (assumed) earliest available weather forecast date and time.
+            Requests will begin searching for valid datasets in reversing
+            6 hour intervals from this date time.
+        progressHandler : function 
+            See simulator.updateProgress
+
+        Returns
+        -------
+        data_matrices : dict
+            ('noaa_name' : data_matrix) pairs, where response is the returned
+            data string. Keys:
+            'tmpprs': Temperature,
+            'hgtprs': 'Altitude',
+            'ugrdprs': 'U Winds',
+            'vgrdprs': 'V Winds'
+        data_maps : dict
+            keys as in data_matrices, but values instead contain the data_maps
         """
         #######################################################################
         # TRY TO DOWNLOAD DATA WITH THE LATEST CYCLE. IF NOT AVAILABLE, TRY
@@ -624,10 +718,14 @@ class GFS_Handler(object):
 
     @profile
     def downloadForecast(self, progressHandler=None):
-        """
-        Connect to the Global Forecast System and download the closest cycle
-        available to the date_time required. The cycle date and time is stored
-        in the object's cycleDateTime variable.
+        """Connect to the Global Forecast System and download the closest cycle
+        available to the date_time required, for the lon/lat window described
+        in this GFS_Handler object.
+
+        The cycle date and time is stored in the object's cycleDateTime
+        variable, while the data and interpolation maps are stored in
+        [self.]temperatureData, altitudeData, windDirData, windSpeedData,
+        temperatureMap, etc.
 
         Parameters
         ----------
@@ -721,6 +819,15 @@ class GFS_Handler(object):
             defined in this dictionary: 'tmpprs' (Temperature), 
             'hgtprs' (Altitude), 'ugrdprs' (U Winds), 'vgrdprs' (V Winds)
 
+        lat : float
+            the latitude that the files refer to
+        lon : float
+            the longitude that the files refer to
+        date_time : :obj:`datetime.datetime`
+            The datetime that the files refer to
+        [HD] : bool (default False)
+            Passed to the class cls.
+
         **kwargs : dict
             The dictionary of keyword: value parameters to be passed to the
             new GFS_Handler. It is the users responsibility to ensure that the
@@ -730,7 +837,11 @@ class GFS_Handler(object):
 
         Notes
         -----
-        This method should be primarily used for testing
+        This method should be primarily used for testing and benchmarking
+
+        See Also
+        --------
+        astra.weather.forecastEnvironment.loadFromNOAAFiles
         """
         # Check that all weather parameters appear in the input dict
         assert(all(k in fileDict for k in GFS_Handler.weatherParameters.keys())),\

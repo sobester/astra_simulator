@@ -41,6 +41,22 @@ class flightProfile(object):
     """
     Parameters
     ----------
+    launchDateTime : :obj: `datetime.datetime`
+        The time that this flight was launched
+
+    nozzleLift : scalar
+        nozzle lift in kg
+    flightNumber : int
+        And identifying number, to differentiate this profile from others
+        plotted/returned
+    timeVector :
+    latitudeProfile :
+    longitudeProfile :
+    altitudeProfile :
+    highestAltIndex :
+    highestAltitude :
+    hasBurst : 
+    balloonModel : 
     highestAltitude : scalar
         The highest altitude reached by the flight. This could be the burst
         altitude, if bursting occurred, or the floating altitude if it didn't
@@ -228,10 +244,6 @@ class flight(object):
 
     Parameters
     ----------
-    environment : :obj:`environment`
-        either soundingEnvironment or forecastEnvironment) already configured
-        with the environmental model. See the Weather Module for more
-        information.
     balloonGasType : string
         'Helium'|'Hydrogen'
     balloonModel : string
@@ -241,31 +253,47 @@ class flight(object):
         nozzle lift in kg
     payloadTrainWeight : scalar
         weight of the payload train in kg
-    parachuteModel : string
-        model of the parachute. Accepted values can be found in
-        available_balloons_parachutes.py.
-    trainEquivSphereDiam : scalar
-        the diameter (in meters) of sphere that generates the same drag as the
-        train
-    numberOfSimRuns : int
-        total number of simulations to be run. If 1, a deterministic simulation
-        is run. If >1, Monte Carlo perturbations are applied to each simulation
-    [excessPressureCoeff] : scalar (default 1)
-        TODO: the coefficient of excess pressure of the balloon on the gas
-        inside. Currently unused
-    [floatingFlight] : bool (default False)
-        TRUE if the balloon is going to vent air and float rather than burst.
-    [floatingAltitude] : scalar
-        the target altitude for the balloon to float, in meters. Ignored if
-        floatingFlight is FALSE
-    [ventingStart] : scalar (default 1000m)
-        how many meters below the target floating altitude should the venting
-        start. Ignored if floatingFlight is FALSE.
+    [environment] : :obj:`environment` (default None)
+        either soundingEnvironment or forecastEnvironment) already configured
+        with the environmental model. See the Weather Module for more
+        information.
     [maxFlightTime] : scalar (default 18000 seconds)
         Maximum duration, in seconds, of a flight to be simulated. Warning:
         setting a high maxFlightTime during a floatingFlight could take a long
         time to simulate!
-    [outputFile] : string
+    [parachuteModel] : string (default None)
+        model of the parachute. Accepted values can be found in
+        available_balloons_parachutes.py.
+    [numberOfSimRuns] : int (default 10)
+        total number of simulations to be run. If 1, a deterministic simulation
+        is run. If >1, Monte Carlo perturbations are applied to each simulation
+    [trainEquivSphereDiam] : scalar (default 0.1)
+        the diameter (in meters) of sphere that generates the same drag as the
+        payload.
+    [floatingFlight] : bool (default False)
+        TRUE if the balloon is going to vent air and float rather than burst.
+    [floatingAltitude] : scalar (default np.inf)
+        the target altitude for the balloon to float, in meters. Ignored if
+        floatingFlight is FALSE
+    [floatDuration] : scalar (default np.inf)
+        The duration of floating flight, before cutdown/bursting is forced
+        (seconds). Only used if floatingFlight is True
+    [ventingStart] : scalar (default 3000m)
+        how many meters below the target floating altitude should the venting
+        start. Ignored if floatingFlight is FALSE.
+    [excessPressureCoeff] : scalar (default 1)
+        TODO: the coefficient of excess pressure of the balloon on the gas
+        inside. Currently unused
+    [cutdown] : bool (default False)
+        If True, Forces a burst (cutdown) after either a timeout, or a given
+        altitude. Note that flight path integration can be unstable if this
+        mode is used, particularly during early timesteps.
+    [cutdownAltitude] : scalar (default np.inf)
+        The altitude at which to trigger cutdown (if cutdown is True)
+    [cutdownTimeout] : scalar (default np.inf)
+        Time is seconds after launch, at which to trigger a burst if
+        cutdown is True.
+    [outputFile] : string (default '')
         the path of the output file containing all the simulation data. The
         format of the file to be generated depends on the extension. Available
         formats are,
@@ -285,14 +313,14 @@ class flight(object):
     [debugging] : bool (default False)
         if TRUE, all the information regarding the simulation will be logged.
         If it's set to FALSE, only errors will be logged.
-    [log_to_file] : bool
+    [log_to_file] : bool (default False)
         determines the location where the errors and debug messages will be
         logged. If TRUE, an error.log file will be created in your current
         folder and everything will go in there (make sure you have permissions
         to write in the current folder, or the simulator will not work!)
         If FALSE, all the errors and debug messages will be displayed on the
         terminal or command line.
-    [progress_to_file] : bool
+    [progress_to_file] : bool (default False)
         If TRUE, a progress .json file will be created in the current folder
         and will be updated during preflight and then once per 'flight'.
         If FALSE, progress information about the simulation will be displayed
@@ -318,7 +346,7 @@ class flight(object):
                  numberOfSimRuns=10,
                  trainEquivSphereDiam=0.1,
                  floatingFlight=False,
-                 floatingAltitude=None,
+                 floatingAltitude=numpy.inf,
                  floatDuration=numpy.inf,
                  ventingStart=3000,
                  excessPressureCoeff=1.,
@@ -1195,15 +1223,18 @@ class flight(object):
             index = tools.find_nearest_index(solution_altitude,
                 self._lastFlightBurstAlt)
         else:
-            if solution_altitude[-1] < self.floatingAltitude - 100:
-                # In this case, the balloon hasn't reached the target altitude.
-                # This is probably because the maxFlightTime is too low:
-                #  Show an error.
-                index = -1
+            if self.floatingFlight:
+                if solution_altitude[-1] < self.floatingAltitude - 100:
+                    # In this case, the balloon hasn't reached the target altitude.
+                    # This is probably because the maxFlightTime is too low:
+                    #  Show an error.
+                    index = -1
+                else:
+                    # Store target altitude reached index
+                    index = tools.find_nearest_index(solution_altitude,
+                        self.floatingAltitude)
             else:
-                # Store target altitude reached index
-                index = tools.find_nearest_index(solution_altitude,
-                    self.floatingAltitude)
+                index = -1
 
         # STORE RESULTS OF CURRENT SIMULATION
         if self._lastFlightBurst:
@@ -1442,7 +1473,8 @@ class flight(object):
 
     def write(self, filename):
         """
-        Function responsible for storing the data in the given format.
+        Function responsible for storing the data contained in self.results
+        in the given format.
 
         The format of the file to be generated depends on the extension given
         in the outputFile.

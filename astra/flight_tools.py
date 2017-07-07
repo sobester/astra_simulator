@@ -66,12 +66,9 @@ def liftingGasMass(nozzleLift, balloonMass, ambientTempC,
 
 def nozzleLiftFixedAscent(ascentRate, balloonMass, payloadMass, ambientTempC,
     ambientPressMbar, gasMolecularMass, excessPressureCoefficient, CD):
-    """Calculates the nozzle lift, gas mass, and balloon Volume
+    """Calculates and returns the nozzle lift required for a target ascent rate
 
-    Parameters
-    ----------
-    ascentRate : scalar
-
+    Assumes a fixed acceleration throughout flight (first order approximation)
     """
     g = 9.81
     gasDensity = excessPressureCoefficient * density(ambientPressMbar,
