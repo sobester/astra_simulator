@@ -11,12 +11,8 @@ Data in the available_baloons_parachutes.balloons dictionary is of the form:
 Data in the available_balloons_parachutes.parachutes dictionary is of the form:
     {"CHUTE ID" : A_ref}
 
-Warning: this module is used privately and should not be used per se.
-
 University of Southampton
 """
-# Data is of the format: "BALLOON ID" : (weight, nominal burst diameter,
-#                                        Weibull lambda, Weibull k)
 balloons = {
     # Totex
     "TA10": (0.01, 0.45, 0.5045, 14.3577),
@@ -57,10 +53,14 @@ balloons = {
     "HW1600": (1.6, 10.5, 11.7725, 14.3577),
     "HW2000": (2.0, 11.0, 12.3330, 14.3577)
 }
+"""Balloon data.
+
+Data is in the format: "BALLOON ID" : (weight, nominal burst diameter,
+Weibull lambda, Weibull k)
+"""
 
 meanToNominalBurstRatio = 1.08116
 
-# Data is of the format: "CHUTE ID" : A_ref
 parachutes = {
     "RCK3": 0.26615,
     "RCK4": 0.47315,
@@ -76,3 +76,7 @@ parachutes = {
     None: 0,
     "": 0
 }
+"""Parachute Data
+
+Data is in the format: "CHUTE ID" : A_ref
+"""

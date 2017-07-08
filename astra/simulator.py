@@ -41,7 +41,7 @@ class flightProfile(object):
     """
     Parameters
     ----------
-    launchDateTime : :obj: `datetime.datetime`
+    launchDateTime : datetime.datetime
         The time that this flight was launched
 
     nozzleLift : scalar
@@ -49,14 +49,24 @@ class flightProfile(object):
     flightNumber : int
         And identifying number, to differentiate this profile from others
         plotted/returned
-    timeVector :
-    latitudeProfile :
-    longitudeProfile :
-    altitudeProfile :
-    highestAltIndex :
-    highestAltitude :
-    hasBurst : 
-    balloonModel : 
+    timeVector : array
+        The array of times at which the latitude, longitude and altitude were
+        obtained
+    latitudeProfile : array of float
+        latitudes at each time in timeVector
+    longitudeProfile : array of float
+        longitudes at each time in timeVector
+    altitudeProfile : array of float
+        latitudes at each time in timeVector
+    highestAltIndex : int
+        index of the highest altitude in altitudeProfile
+    highestAltitude : scalar
+        highest altitude in altitudeProfile
+    hasBurst : bool
+        Set to True if the balloon has burst
+    balloonModel : string 
+        Model of the balloon used for this flight
+        (see astra.available_balloons_parachutes.balloons)
     highestAltitude : scalar
         The highest altitude reached by the flight. This could be the burst
         altitude, if bursting occurred, or the floating altitude if it didn't
@@ -80,10 +90,13 @@ class flightProfile(object):
         self.latitudeProfile = latitudeProfile
         self.longitudeProfile = longitudeProfile
         self.altitudeProfile = altitudeProfile
+        # TODO: Make highestAltitude and highestAltIndex calculated on
+        # construction
         self.highestAltIndex = highestAltIndex
         self.highestAltitude = highestAltitude
         self.hasBurst = hasBurst
         self.balloonModel = balloonModel
+
         self.flightDurationSecs = self.timeVector[-1]
 
     def getJsonPath(self):
@@ -223,6 +236,30 @@ class flightProfile(object):
 
     @classmethod
     def fromProfile(cls, profile, *args, **kwargs):
+        """Creates a new profile, which is a new instance of this profile, with
+        additional args/kwargs.
+
+        This method is used to create targetFlight instances, that have some
+        measure of objective score and input vector, used in optimization.
+        However, all subclasses of flightProfile will inherit this method, and
+        could therefore use this factory classmethod to make copies with
+        additional attributes and methods.
+
+        Example:
+            profile = flightProfile(launchDateTime,
+                     nozzleLift,
+                     flightNumber,
+                     timeVector,
+                     latitudeProfile,
+                     longitudeProfile,
+                     altitudeProfile,
+                     highestAltIndex,
+                     highestAltitude,
+                     hasBurst,
+                     balloonModel)
+            tprof = astra.target_landing.targetProfile.fromProfile(profile,
+                fitness=fitness, X=[0, 1, 2, 3, 4, 5])
+        """
         return cls(launchDateTime=profile.launchDateTime,
             nozzleLift=profile.nozzleLift,
             flightNumber=profile.flightNumber,
@@ -240,7 +277,7 @@ class flightProfile(object):
 class flight(object):
     """Primary Balloon flight simulation class.
 
-    Provides methods for solving the ascent rate equation [ref needed], 
+    Provides methods for solving the ascent rate equation given in [1]_, 
 
     Parameters
     ----------
@@ -248,12 +285,12 @@ class flight(object):
         'Helium'|'Hydrogen'
     balloonModel : string
         model of the balloon. Accepted values can be found in
-        available_balloons_parachutes.py.
+        :obj:`astra.available_balloons_parachutes.balloons`.
     nozzleLift : scalar
         nozzle lift in kg
     payloadTrainWeight : scalar
         weight of the payload train in kg
-    [environment] : :obj:`environment` (default None)
+    [environment] : :obj:`~astra.weather.environment` object (default None)
         either soundingEnvironment or forecastEnvironment) already configured
         with the environmental model. See the Weather Module for more
         information.
@@ -325,6 +362,20 @@ class flight(object):
         and will be updated during preflight and then once per 'flight'.
         If FALSE, progress information about the simulation will be displayed
         on the terminal or command line.
+
+    Attributes
+    ----------
+    results : list
+        All flight profiles obtained during the :func:`run` are added to the
+        results list, and written to a file with the :func:`write` function.
+
+    References
+    ----------
+    .. [1] 
+        Sobester, A., Czerski, H.,  Zapponi, N., and Castro, I. P., 
+        "High Altitude Gas Balloon Trajectory Prediction - a Monte Carlo Model".
+         AIAA Journal, 52, (4), 2014, pp. 832-842. (doi:10.2514/1.J052900 
+         <http://dx.doi.org/10.2514/1.J052900>).
 
     Notes
     -----
@@ -403,7 +454,7 @@ class flight(object):
         # must be defined before nozzleLift 
         self.environment = environment                # weather object
         self.balloonGasType = balloonGasType
-        self.numberOfSimRuns = numberOfSimRuns
+        self._numberOfSimRuns = numberOfSimRuns       # Don't use the setter here: circular dependency with self.balloonModel
         self.balloonModel = balloonModel              # See available_balloons
         self.payloadTrainWeight = payloadTrainWeight  # kg
         self.nozzleLift = nozzleLift                  # kg
@@ -441,12 +492,15 @@ class flight(object):
     # ----------------------------------------------------------------------
     @property
     def samplingTime(self):
-        """Note: No setter exists for this, as it should not be set by the user
+        """Sampling time property
+
+        Note: No setter exists for this, as it should not be set by the user
         """
         return self._samplingTime
 
     @property
     def launchSiteLat(self):
+        """launch site latitiude property"""
         return self._launchSiteLat
 
     @launchSiteLat.setter
@@ -457,6 +511,7 @@ class flight(object):
 
     @property
     def launchSiteLon(self):
+        """launch site longitude property"""
         return self._launchSiteLon
 
     @launchSiteLon.setter
@@ -467,6 +522,12 @@ class flight(object):
 
     @property
     def environment(self):
+        """environment property, subclass of :obj:`astra.weather.environment`
+
+        Will load the environment (environment.load) if
+        environment.weatherLoaded is False. Also updates launch site latitude,
+        longitude, and elevation based on values in this environment.
+        """
         return self._environment
     
     @environment.setter
@@ -496,6 +557,10 @@ class flight(object):
 
     @property
     def balloonGasType(self):
+        """balloon gas type property (string)
+
+        Also updates the molecular mass attribute, self._gasMolecularMass
+        """
         return self._balloonGasType
 
     @balloonGasType.setter
@@ -511,6 +576,12 @@ class flight(object):
 
     @property
     def balloonModel(self):
+        """balloon model property (string)
+        
+        Setting this value also updates several internal balloon data criteria,
+        including balloon mass, weibull distribution of burst diameter, and
+        the monte carlo array used by :func:`~astra.simulator.flight.run`
+        """
         return self._balloonModel
 
     @balloonModel.setter
@@ -543,6 +614,10 @@ class flight(object):
 
     @property
     def parachuteModel(self):
+        """balloon parachute property (string)
+
+        Updates the reference area used for drag calculation when set.
+        """
         return self._parachuteModel
 
     @parachuteModel.setter
@@ -557,6 +632,7 @@ class flight(object):
 
     @property
     def nozzleLift(self):
+        """Nozzle lift property."""
         return self._nozzleLift
 
     @nozzleLift.setter
@@ -582,6 +658,11 @@ class flight(object):
 
     @property
     def numberOfSimRuns(self):
+        """number of sim runs property.
+
+        Will update the monte carlo parameters, using :func:`~astra.simulator.flight.initMonteCarloParams`.
+        This means that a balloon type must be selected before setting this value.
+        """
         return self._numberOfSimRuns
 
     @numberOfSimRuns.setter
@@ -594,6 +675,12 @@ class flight(object):
 
     @property
     def outputFile(self):
+        """output file property
+
+        Setting this value will attempt to create the input filename, before
+        deleting it instantly. This value will later be used after a run
+        to write all results to file.
+        """
         return self._outputFile
     
     @outputFile.setter
@@ -858,10 +945,15 @@ class flight(object):
             Runs the preflight calculations if True. Useful to switch this off
             if a uniform launchDateTime is used across all flights (as is the
             case with the Monte Carlo simulation in self.run)
+
         Returns
         -------
-        result : list of numpy array
-            arrays for flight number, time, 
+        result : :obj:`astra.simulator.flightProfile`
+            object containing the flight profile, input data etc
+
+        See Also
+        --------
+        astra.simulator.flightProfile
         """
         # Check whether the preflight sequence was performed. If not, stop the
         # simulation.

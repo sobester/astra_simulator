@@ -19,7 +19,8 @@
 #
 import os
 import sys
-sys.path.append(os.path.abspath('../..'))
+sys.path.insert(0, os.path.abspath('../../'))
+print(sys.path)
 
 # Avoid 'toctree contains reference to nonexisting document' numpydoc errors
 numpydoc_show_class_members = False

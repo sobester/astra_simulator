@@ -260,10 +260,10 @@ def ISAatmosphere(altitude=None, temperature=None, density=None, pressure=None,
         speedOfSound=None):
     """Return ISA atmospheric conditions for the input parameters given.
 
+    (Note: Either the altitude or the temperature MUST be given!)
+
     Parameters
     ----------
-        (Note: Either the altitude or the temperature MUST be given!)
-
     altitude : [ft]
         Either this or temperature must be given
     temperature : [degC]

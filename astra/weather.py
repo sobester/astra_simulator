@@ -56,6 +56,8 @@ class environment(object):
         elevation of the launch site above Mean Sea Level [m]
     dateAndTime : :obj:`datetime.datetime`
         Date and time of launch
+    inflationTemperature : float
+        the ambient temperature during the balloon inflation [degC]
     UTC_offset : float
         the offset in hours between the current time zone and UTC
         (for example, Florida in winter has a UTC_offset = -5)
@@ -717,13 +719,27 @@ class forecastEnvironment(environment):
         Florida in winter has a UTC_offset = -5)
     inflationTemperature : float
         the ambient temperature during the balloon inflation [degC]
-    forceNonHD : bool (default False)
+    [forceNonHD] : bool (default False)
         if TRUE, the weather forecast download will be forced to a lower
         resolution (i.e. 1deg x 1deg)
+    [forecastDuration] : float (default 4)
+        The number of hours from dateAndTime for which to download weather data
+    [use_async] : bool (default True)
+        Use an asynchronous request for downloads. This should speed up the
+        download, but may incur larger memory overhead for large forecastDuration.
+    [requestSimultaneous] : bool (default True)
+        If True, populate a dictionary of responses from the web download
+        requests, then process the data. If False, each response will be
+        removed once the data has been processed: This has better memory
+        overhead for large ForecastDuration, but is slower, and does not work
+        with asynchronous requesting (use_async)
     [debug] : bool, optional (default False)
         If TRUE, all the information available will be logged
     [log_to_file]: bool, optional (default False)
          If true, all error and debug logs will be stored in an error.log file
+    [progressHandler] : function, or None (default None)
+        Progress for each downloaded parameter (in %) will be passed to this
+        function, if provided.
     [load_on_init] : bool, optional (default False)
         If True, the forecast will be downloaded when the environment object is
         created. This is set to False by default, as the :obj:`flight` object

@@ -1,8 +1,16 @@
 # -*- coding: utf-8 -*-
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
-# @Last Modified by:   p-chambers
-# @Last Modified time: 2017-07-07 18:29:19
+# @Last Modified by:   Paul Chambers
+# @Last Modified time: 2017-07-08 20:02:55
+"""
+This module contains classes for optimization of the flight for achieving
+a target landing site.
+
+See examples/notebooks/example_targetlanding.ipynb for usage.
+
+University of Southampton
+"""
 from .simulator import flight, flightProfile
 from .weather import forecastEnvironment
 from .available_balloons_parachutes import balloons
@@ -82,6 +90,20 @@ logger = logging.getLogger(__name__)
 
 
 class targetProfile(flightProfile):
+    """Extends the astra.simulator.flightProfile to assign both a fitness
+    measure, and a vector of inputs used in the objective function.
+
+    Parameters
+    ----------
+    fitness : subclass of deap.base.BaseFitness
+        The fitness measure (supports multiple objectives).
+    X : array
+        array of inputs to :meth:`astra.target_landing.targetFlight.targetDistance`.
+
+    See Also
+    --------
+    astra.simulator.flightProfile, astra.target_landing.targetFlight.targetDistance
+    """
     def __init__(self, launchDateTime,
                  nozzleLift,
                  flightNumber,
@@ -96,20 +118,6 @@ class targetProfile(flightProfile):
                  fitness,
                  X
                  ):
-    """Extends the astra.simulator.flightProfile to assign both a fitness
-    measure, and a vector of inputs used in the objective function.
-
-    Parameters
-    ----------
-    fitness : subclass of :obj:`deap.base.BaseFitness`
-        The fitness measure (supports multiple objectives).
-    X : array
-        array of inputs to astra.targetFlight.targetDistance.
-
-    See Also
-    --------
-    astra.simulator.flightProfile, astra.targetFlight.targetDistance
-    """
         super(targetProfile, self).__init__(launchDateTime=launchDateTime,
             nozzleLift=nozzleLift,
             flightNumber=flightNumber,
@@ -143,12 +151,88 @@ class targetFlight(flight):
         The nozzle lift (in kg). This class currently uses a static nozzle
         lift, and searches time only. Future versions will also search the
         nozzle lift parameter.
-    windowDuration : int
+    balloonGasType : string
+        'Helium'|'Hydrogen'
+    balloonModel : string
+        model of the balloon. Accepted values can be found in
+        available_balloons_parachutes.py.
+    payloadTrainWeight : scalar
+        weight of the payload train in kg
+    inflationTemperature : float
+        the ambient temperature during the balloon inflation [degC]
+    windowDuration : int (default 24)
         The duration for which to download weather data (in hours). Flights
         will be sampled within this range.
     weights : tuple of signed int
         The weights for each of the objectives assessed by the targetDistance
         function. 
+    [requestSimultaneous] : bool (default True)
+        If True, populate a dictionary of responses from the web download
+        requests, then process the data. If False, each response will be
+        removed once the data has been processed: This has better memory
+        overhead for large ForecastDuration, but is slower, and does not work
+        with asynchronous requesting (use_async)    [HD] : bool (default True)
+        if FALSE, non-HD forecast will be downloaded. Otherwise, HD forecast
+        will be downloaded and, if the data size is too high, the GFS_Handler
+        will automatically switch to non-HD.
+    [maxFlightTime] : scalar (default 18000 seconds)
+        Maximum duration, in seconds, of a flight to be simulated. Warning:
+        setting a high maxFlightTime during a floatingFlight could take a long
+        time to simulate!    [parachuteModel] : string (default None)
+        model of the parachute. Accepted values can be found in
+        available_balloons_parachutes.py.    [trainEquivSphereDiam] : scalar (default 0.1)
+        the diameter (in meters) of sphere that generates the same drag as the
+        payload.
+    [floatingFlight] : bool (default False)
+        TRUE if the balloon is going to vent air and float rather than burst.
+    [floatingAltitude] : scalar (default np.inf)
+        the target altitude for the balloon to float, in meters. Ignored if
+        floatingFlight is FALSE
+    [ventingStart] : scalar (default 3000m)
+        how many meters below the target floating altitude should the venting
+        start. Ignored if floatingFlight is FALSE.
+    [excessPressureCoeff] : scalar (default 1)
+        TODO: the coefficient of excess pressure of the balloon on the gas
+        inside. Currently unused
+    [outputFile] : string (default '')
+        the path of the output file containing all the simulation data. The
+        format of the file to be generated depends on the extension. Available
+        formats are,
+        'json' : JavaScript data structure, used to provide data to the
+            web interface
+        'kml' : Standard format for geographical data. It can be opened by
+            Google Maps, Google Earth, etc
+        'kmz' : Zipped kml, good for online use (eg Google Maps). The
+            file size is significantly reduced;
+        'csv' : Comma separated values, the preferred format for further
+            data processing with any other software;
+        'csv.zip' : Zipped csv file;
+        'web' : This stores json, kml and csv.zip in the same folder
+            requested. This is used by the web interface to prepare files
+            for export. If no extension is found, a new folder is created
+            and ALL output formats are stored.
+    [debugging] : bool (default False)
+        if TRUE, all the information regarding the simulation will be logged.
+        If it's set to FALSE, only errors will be logged.
+    [log_to_file] : bool (default False)
+        determines the location where the errors and debug messages will be
+        logged. If TRUE, an error.log file will be created in your current
+        folder and everything will go in there (make sure you have permissions
+        to write in the current folder, or the simulator will not work!)
+        If FALSE, all the errors and debug messages will be displayed on the
+        terminal or command line.
+
+    Attributes
+    ----------
+    results : deap.support.ParetoFront
+        Flight profiles are added to this object, which behaves similarly to a
+        list. Non dominated individuals ONLY will exist in this list, and
+        those which are dominated are removed. Entries are stored lexographically,
+        however, a set of weightings are required to obtain the 'best' individual
+        from this list (via a weighted sum).
+
+        These profiles can be written to file using
+        :func:`~astra.simulator.flight.Write`.
 
     See Also
     --------
@@ -167,6 +251,7 @@ class targetFlight(flight):
                  payloadTrainWeight,
                  inflationTemperature,
                  windowDuration=24,
+                 weights=(-1, -1, -1),
                  requestSimultaneous=False,
                  HD=False,
                  maxFlightTime=18000,
@@ -261,6 +346,7 @@ class targetFlight(flight):
 
     @property
     def weights(self):
+        """weights property, used for Pareto analysis"""
         return self._weights
 
     @weights.setter
@@ -279,14 +365,16 @@ class targetFlight(flight):
 
     @property
     def balloonsSelected(self):
+        """balloonsSelected property
+
+        Takes an input list of selected balloon models, and stores it as an
+        attribute. Also updates the self.largestBalloon, which is used to
+        normalise the cost (gas mass) objective.
+        """
         return self._balloonsSelected
 
     @balloonsSelected.setter
     def balloonsSelected(self, newBalloonModels):
-        """Takes an input list of selected balloon models, and stores it as an
-        attribute. Also updates the self.largestBalloon, which is used to
-        normalise the cost (gas mass) objective.
-        """
         self._balloonsSelected = {k: balloons[k] for k in newBalloonModels}
         self.largestBalloon = max(self._balloonsSelected,
             key=lambda k: abs(self._balloonsSelected.get(k)[1]))
@@ -337,15 +425,60 @@ class targetFlight(flight):
     def createObjectiveAndBounds(self, flightModes=['standard'],
         flexibleBalloon=False, deviceActivationAltitudeBounds=(), floatDuration=None,
         balloonModels=[], returnWeightedSum=True):
-        """
+        """Creates the objective function (based on :func:`targetDistance`)
+        and bounds, replacing inputs with constants where necessary.
+
+        Uses the :meth:`~astra.target_landing.targetFlight.targetDistanceFactory`
+        function to construct the objective function.
+
+        Parameters
+        ----------
+        [flightModes] : list of string
+            If this list contains only one element, the flightMode input
+            in the objective (self.targetDistance) function is removed.
+            deviceActivationAltitude is switched off if neither 'floating' or
+            'cutdown' appear in this list. The floatDuration input is removed if
+            'floating' does not appear in this list. Allowable entries in the
+            list are:
+                'standard' = standard ascent, burst, descent
+                'floating' = ascent with venting, float at deviceActivationAltitude,
+                    burst after floatDuration seconds, then descend
+                'cutdown' : ascend up to deviceActivationAltitude, force burst, 
+                    then descend
+        [flexibleBallon] : bool (default False)
+            If False, Removes the nominalBurstDia parameter from
+            self.targetDistance in the returned objective function.
+        [deviceActivationAltitudeBounds] : tuple or list, length 1 OR 2
+            If length 1, this value is taken as a constant, and remove from the
+            objective targetDistance function. If length two, these are used
+            as the device activation bounds (required 'cutdown' or 'floating'
+            to be provided in the flightModes parameter), and this argument
+            is kept in the objective function.
+        [floatDuration] : scalar
+            If provided, and 'floating' appears in the flightModes input, this
+            is the constant value of floatDuration that will be passed to
+            self.targetDistance (hence, this value is removed from the created
+            objective function)
+        [balloonModels] : list of string
+            The allowable balloon models. This must be provided if flexibleBalloon
+            is True.
+        returnWeightedSum : bool
+            See `~astra.target_landing.targetFlight.targetDistance` for usage.
 
         Returns
         -------
         objective : function
-
+            Function that has as many arguments as there are in the boundsDict.
+            All other arguments passed to self.targetDistance are kept as 
+            constants. For the names of each parameter in this objective
+            function, refer to self.variables.
         boundsDict : list
             The bounds of each parameter in the returned objective function,
-            in the order they appear in the arguments.
+            in the order they appear in the arguments of the objective.
+
+        See Also
+        --------
+        astra.target_landing.targetFlight.targetDistance()
         """
         # Build the dictionary of constants that the objective function will
         # ignore:
@@ -437,18 +570,55 @@ class targetFlight(flight):
 
     def targetDistance(self, t, targetAscentRate, flightMode, deviceActivationAltitude,
         floatDuration, balloonNominalBurstDia, returnWeightedSum=True):
-        """
+        """Lowest level function used for optimizing the target distance, cost
+        and flight duration objectives for a given mission.
+
+        For the higher level API, refer to :meth:`~targetDistanceFactory`,
+        which returns a new function where some arguments to targetDistance
+        are switched off (made constant).
+
         Parameters
         ----------
-        X : iterable
-            The input vector. Should contain elements,
-                x[0] :  time, in hours, after the start of the optimisation
-                window (self.startTime)
+        t : scalar
+            time, in hours, after the start of the optimisation
+            window (self.startTime)
+        targetAscentRate : scalar
+            The target ascent rate - defines the nozzle lift used to begin
+            flight path integration, using a first order approximation:
+            :func:`astra.flight_tools.nozzleLiftFixedAscent`. Note that this
+            target may not be attained, since the ascent rate is a function of
+            altitude, and is integrated throughout the flight.
+        flightMode : list of string
+            defines the flight modes to use in the optimization:
+            'standard' = standard ascent, burst, descent
+            'floating' = ascent with venting, float at deviceActivationAltitude,
+                burst after floatDuration seconds, then descend
+            'cutdown' : ascend up to deviceActivationAltitude, force burst, 
+                then descend            
+        deviceActivationAltitude : scalar
+            The altitude at which to activate the altitude control device
+            defined by the flightMode.
+        floatDuration : scalar
+            The time in seconds for which to float, before forcing cutdown.
+            See: flightModes.
+        balloonNominalBurstDia : scalar
+            The balloon burst diameter (in meters) for which to search for in
+            self.balloonsSelected. The nearest neighbour from this dictionary
+            is obtained, and used for this flight.
+        returnWeightedSum: bool (default True)
+            Returns the sum of self.weights * flightProfile.fitness.values.
+            This is useful for scipy, or a weighted sum algorithm, but deap
+            is capable of working with a tuple of multiple objectives.
         
-        returns
+        Returns
         -------
-        distance : scalar
-            The euclidean norm of [target_lon - lon, target_lat - lat] (degrees)
+        [values] : tuple
+            All objectives (distance from landing site in km, gas mass in kg,
+            flight duration in sections) are returned if returnWeightedSum
+            is False
+        [sum] : scalar
+            The sum of the values described in `values`, multiplied by
+            corresponding weights in self.weights.
         """
         # Find the balloon model with nearest burst diameter to that of the
         # input
@@ -543,6 +713,10 @@ class targetFlight(flight):
             return fitness.values
 
     def _callbackStoreResult(self, xk, convergence):
+        """Updated self.Xs with the current xk.
+
+        Used as a callback after each iteration by scipy optimization algorithms
+        """
         xk[1] = nozzleLiftFixedAscent(xk[1],
                 self._balloonWeight, self.payloadTrainWeight,
                 self.environment.inflationTemperature,
@@ -557,8 +731,31 @@ class targetFlight(flight):
     def bruteForce(self, Nx, Ny, balloonModel, flightMode='standard',
         deviceActivationAltitude=None, floatDuration=None, storeAll=False):
         """ Sample the parameter space and form a map of the landing site
-        distance landscape
-        Currently only considers time
+        distance landscape, in nozzle lift vs time (from self.start_dateTime,
+        to the end of the input windowDuration)
+
+        Parameters
+        ----------
+        Nx, Ny : int
+            Number of points in time and target ascent rate respectively.
+        balloonModel : string
+            A key from the dictionary :obj:`~astra.available_balloons_parachutes`
+        flightMode : list of string
+            defines the flight modes to use in the optimization:
+            'standard' = standard ascent, burst, descent
+            'floating' = ascent with venting, float at deviceActivationAltitude,
+                burst after floatDuration seconds, then descend
+            'cutdown' : ascend up to deviceActivationAltitude, force burst, 
+                then descend            
+        deviceActivationAltitude : scalar
+            The altitude at which to activate the altitude control device
+            defined by the flightMode.
+        floatDuration : scalar
+            The time in seconds for which to float, before forcing cutdown.
+            See: flightModes.
+        storeAll : bool
+            If True, all flight profiles are added to self.results. Otherwise,
+            only the Pareto Front of non dominated individuals is stored.
         """
         # Set up the arrays where results will be stored. Also storing the 
         # multiple objectives.
@@ -635,6 +832,19 @@ class targetFlight(flight):
             between the bounds of [0, self.windowDuration], and nozzle lift
             calculated to achieve ascent rates between the bounds of
             self.minAscentRate and self.maxAscentRate
+        flightMode : list of string
+            defines the flight modes to use in the optimization:
+            'standard' = standard ascent, burst, descent
+            'floating' = ascent with venting, float at deviceActivationAltitude,
+                burst after floatDuration seconds, then descend
+            'cutdown' : ascend up to deviceActivationAltitude, force burst, 
+                then descend            
+        deviceActivationAltitude : scalar
+            The altitude at which to activate the altitude control device
+            defined by the flightMode.
+        floatDuration : scalar
+            The time in seconds for which to float, before forcing cutdown.
+            See: flightModes.
         sliceParam : string
             variable name for which to slice the distance vs nozzle lift and
             time landscape. Expected names are any of
@@ -643,14 +853,18 @@ class targetFlight(flight):
             Number of slices to use between sliceBounds to use for sliceParam
         sliceBounds : tuple
             the lower limit, upper limit between which to sample sliceParam
+        sliceParam_subset : list
+            If the sliceParam is discrete (i.e., 'flightMode' or 'balloonModel'),
+            this value will be used at the discrete values for which to slice
+            through.
 
         Notes
         -----
         Whichever parameter is chosen for slicing will be overwritten. E.g.:
-        if balloonModel='TA100', but the 
+        if balloonModel='TA100', but the slicingParam is 'balloonModel', this
+        value will be ignored
 
-        :Example:
-            >>> 
+        See /examples/notebooks/example_targetlanding.ipynb for usage
         """
 
         # Keep all paths for now, to visualize the landscape of nozzle lift
@@ -801,7 +1015,15 @@ class targetFlight(flight):
         flexibleBalloon=False, deviceActivationAltitudeBounds=[np.inf],
         balloonModels=[], method='Nelder-Mead',
         weights=(), seed=None, **kwargs):
-        """
+        """Created an objective function based on self.targetDistance, with certain
+        values held constant (depending on inputs), and minimize the distance
+        from landing site to target location (class inputs)
+
+        self.results will be populated with a Pareto Front of flightProfiles
+        following a call to this function. Objectives used in the multi-objective
+        Pareto Front are the distance from the target (in km), gas mass (relating
+        to cost) in kg, and flight duration.
+
         Parameters
         ----------
         flightMode : list of string
@@ -824,28 +1046,28 @@ class targetFlight(flight):
             the allowable balloons models to search during optimization
             (if flexibleBalloon is True)
         method : string
-            'brute-force' : Sample flight every hour within the time window
-                *Note: this probably isn't suitable given more than two params
             'Nelder-Mead' : Use scipy's Nelder mead pattern search. This has
                 proven to be sensitive to initial guesses for this application.
+            'l-bfgs-b' : Use Scipys gradient based l-bfgs-b algorithm.
+                Note that this has proven to be poor here (and the landscape
+                is often not continuous either).
             'DE' : Use scipy differential evolution.
             'GA' : Use a mu plus lambda genetic algorithm, from DEAP
-
-        [maxsize] : int (default 10)
-            The number of (lexographically sorted by distance from target site)
-            profiles to keep in self.results
-
+        [seed] : int
+            The random seed passed to the algorithm (only used for GA, DE)
         [weights] : tuple of int
             if provided, the value of self.weights will be overridden, changing
             the weightings used in the objective function and Pareto Front
             ordering. See self.weights.
-
-        **kwargs - extra args to pass to scipy
+        [**kwargs] : 
+            extra  keyword args are passed to the underlying function,
+            i.e., scipy.optimize.minimize for methods 'nelder-mead' or 'l-bfgs-b', 
+            or scipy.differential_evolution for 'DE'. Additional kwargs are
+            not used for the 'GA' method.
         
         See Also
         --------
         targetFlight.targetDistance
-        
         """
         # run the simulation every hour over the time window. Note that we need
         # to also get weather to cover a flight of duration <maxFlightTime>,
@@ -1015,18 +1237,28 @@ class targetFlight(flight):
 
     def plotObjectiveContours(self, dateTimeVector, nozzleLiftVector, scores,
         fig=None, ax=None, bestMarker='b*', appendLabel='', bestProfile=None,  **kwargs):
-        """Plots the ground distance of the landing sites contained in
-        self.results from the target landing site.
+        """"Plots the objective scores of the flights returned by bruteForce.
 
-        Requires a call to any of the optimisation of brute force calculations
-        to populate self.results.
+        Inputs are returned by any of the class' brute force calculation methods,
+        i.e., bruteForce or bruteForceSlice.
 
         Parameters
         ----------
+        dateTimeVector : array, shape (Nx, )
+            The array of dateTimes calculated in the bruteForce function
+        nozzleLiftVector : array shape (Ny, )
+            The array of nozzleLifts calculated by the bruteForce function
+        scores : array, shape(Nx, Ny)
+            The array of scores
         kwargs :
             Additional named args will be passed to ax.contour for plot
             settings
+
+        Notes
+        -----
+        See /examples/notebooks/example_target_landing.ipynb for usage
         """
+        
         if not fig:
             fig = plt.figure()
         if not ax:
@@ -1058,14 +1290,20 @@ class targetFlight(flight):
 
     def plotObjectiveContours3D(self, dateTimeVector, nozzleLiftVector, scores,
         fig=None, ax=None, bestMarker='b*', appendLabel='', bestProfile=None, **kwargs):
-        """Plots the ground distance of the landing sites contained in
-        self.results from the target landing site.
+        """Plots the objective scores of the flights returned by bruteForce.
 
-        Requires a call to any of the optimisation of brute force calculations
-        to populate self.results.
+        Inputs are returned by any of the class' brute force calculation methods,
+        i.e., bruteForce or bruteForceSlice. This method plots the same data
+        as plotObjectiveConturs, but returns a 3d figure instead.
 
         Parameters
         ----------
+        dateTimeVector : array, shape (Nx, )
+            The array of dateTimes calculated in the bruteForce function
+        nozzleLiftVector : array shape (Ny, )
+            The array of nozzleLifts calculated by the bruteForce function
+        scores : array, shape(Nx, Ny)
+            The array of scores
         kwargs :
             Additional named args will be passed to ax.contour for plot
             settings
@@ -1167,8 +1405,11 @@ class targetFlight(flight):
         return fig, ax
 
     def plotParetoFront(self):
-        """Plots the points stored in the simulator.ParetoFront (containing the non-dominated
-        Pareto efficient individuals).
+        """Plots the points stored in the simulator.ParetoFront (containing
+        the non-dominated Pareto efficient individuals).
+
+        Requires a call to any optimization or bruteForce method, populating
+        self.results.
         
         Notes
         -----
