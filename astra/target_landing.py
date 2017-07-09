@@ -2,7 +2,7 @@
 # @Author: p-chambers
 # @Date:   2017-05-08 11:36:23
 # @Last Modified by:   Paul Chambers
-# @Last Modified time: 2017-07-08 20:02:55
+# @Last Modified time: 2017-07-09 11:01:13
 """
 This module contains classes for optimization of the flight for achieving
 a target landing site.
@@ -406,7 +406,9 @@ class targetFlight(flight):
 
         def objective(X):
             X_kwargs = dict(zip(remaining_args, X))
-            kwargs = {**constantsDict, **X_kwargs}
+            # merge the dictionaries: {**a, **b} doesn't work in python 2
+            kwargs = constantsDict.copy()
+            kwargs.update(X_kwargs)
 
             # Check that Floating flight is within the bounds of zero and 3,
             # then round to give an integer (Note: this doesn't work with Nelder
@@ -475,7 +477,7 @@ class targetFlight(flight):
         boundsDict : list
             The bounds of each parameter in the returned objective function,
             in the order they appear in the arguments of the objective.
-
+x
         See Also
         --------
         astra.target_landing.targetFlight.targetDistance()
