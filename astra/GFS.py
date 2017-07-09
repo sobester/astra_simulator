@@ -854,7 +854,7 @@ class GFS_Handler(object):
 
         for name, fname in fileDict.items():
             requestReadableName = module.weatherParameters[name]
-            with open(fname, 'r') as f:
+            with open(fname, 'rb') as f:
                 dataResults = f.read().decode('utf-8')
             # Convert the data to matrix and map and store progress. Note that
             # this has to be passed as a list to generate_matrix, since it
