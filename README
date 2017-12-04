@@ -1,0 +1,15 @@
+ASTRA High Altitude Balloon Flight Planner
+
+University of Southampton
+
+This README file explains how to use the ASTRA High Altitude Balloon Flight Planner without the web interface.
+
+See the included examples and notebooks for usage.
+
+Distribution
+------------
+This module has been tested on python 2.7 and 3.6
+Use of the Anaconda Python distribution is recommended.
+
+
+Copyright 2013, University of Southampton.

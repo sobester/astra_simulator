@@ -1,0 +1,11 @@
+*/astra.egg-info/
+*.pyc
+.ipynb_checkpoints
+*/dist/
+*/build/
+*.DS_Store
+*.cache
+simulator/examples/astra_output*
+*_progress.json
+*.dat
+*.lprof
