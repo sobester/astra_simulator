@@ -1,4 +1,4 @@
-*/astra.egg-info/
+*astra.egg-info/
 *.pyc
 .ipynb_checkpoints
 */dist/
@@ -9,3 +9,4 @@ simulator/examples/astra_output*
 *_progress.json
 *.dat
 *.lprof
+*.log
