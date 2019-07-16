@@ -1042,7 +1042,7 @@ class GFS_Handler(object):
 
                 # Store values
                 results[latitudeIndex, :, pressureIndex, timeIndex] = [
-                    float(x) for x in line.split(',')[1:]]
+                    float(x) if float(x) < 1e8 else 0 for x in line.split(',')[1:]]
 
             # Generate the mapping. This is an object containing mapping
             # information between GFS indices for lat,lon,press, time and
