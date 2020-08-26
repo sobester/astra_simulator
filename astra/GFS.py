@@ -18,6 +18,7 @@ import grequests
 import itertools
 import numpy
 from scipy.interpolate import UnivariateSpline
+import urllib.parse
 
 from . import global_tools as tools
 from .interpolate import Linear4DInterpolator
@@ -60,13 +61,15 @@ def get_urldict_async(urls_dict, hooks_dict=None):
     urls_list = list(itertools.chain.from_iterable(urls_dict.values()))
     reqs = (grequests.get(u, hooks=hooks_dict) for u in urls_list)
     responses = grequests.map(reqs)
-    results = {r.url: r.text for r in responses}
+    results = {urllib.parse.unquote(r.url): r.text for r in responses}
     if any(result[0] == "<" for result in results.values()):
         logger.debug("GFS cycle not found.")
         return
     else:
         # get the url expected at each location for each key in url_dict, then
         # insert the retrieved data at this location
+        print(urls_dict)
+        print(results)
         results_dict = {key: [results[url] for url in url_list] for key, url_list in urls_dict.items()}
         return results_dict
 
@@ -303,8 +306,8 @@ class GFS_Handler(object):
 
         # The base URL depends on whether the HD service has been requested.
         self.baseURL = {
-            True: 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p25/',
-            False: 'http://nomads.ncep.noaa.gov:9090/dods/gfs_0p50/'
+            True: 'https://nomads.ncep.noaa.gov/dods/gfs_0p25/',
+            False: 'https://nomads.ncep.noaa.gov/dods/gfs_0p50/'
         }[self.HD]
 
         if debugging:
