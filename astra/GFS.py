@@ -68,8 +68,6 @@ def get_urldict_async(urls_dict, hooks_dict=None):
     else:
         # get the url expected at each location for each key in url_dict, then
         # insert the retrieved data at this location
-        print(urls_dict)
-        print(results)
         results_dict = {key: [results[url] for url in url_list] for key, url_list in urls_dict.items()}
         return results_dict
 
