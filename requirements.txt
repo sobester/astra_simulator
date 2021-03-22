@@ -15,6 +15,6 @@ python-dateutil==2.8.1
 requests==2.25.0
 scipy==1.5.4
 six==1.15.0
-urllib3==1.26.2
+urllib3==1.26.3
 zope.event==4.5.0
 zope.interface==5.2.0
